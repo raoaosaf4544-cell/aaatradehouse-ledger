@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <script>
+      try {
+        const originalFetch = window.fetch;
+        Object.defineProperty(window, 'fetch', {
+          get: () => originalFetch,
+          set: (v) => console.warn('Ignored assignment to window.fetch'),
+          configurable: true,
+          enumerable: true
+        });
+        Object.defineProperty(globalThis, 'fetch', {
+          get: () => originalFetch,
+          set: (v) => console.warn('Ignored assignment to globalThis.fetch'),
+          configurable: true,
+          enumerable: true
+        });
+      } catch(e) {}
+    </script>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AAA Trade House Ledger</title>
+    <meta name="description" content="Enterprise Financial & Operations Master Ledger for a Salt Mining, Processing, and Distribution Business." />
+    <meta property="og:title" content="AAA Trade House Ledger" />
+    <meta property="og:description" content="Enterprise Financial & Operations Master Ledger for a Salt Mining, Processing, and Distribution Business." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx?t=1700000000"></script>
+  </body>
+</html>
+
