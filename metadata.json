@@ -1,8 +1,0 @@
-{
-  "name": "AAA Trade House Ledger",
-  "description": "Enterprise Financial & Operations Master Ledger for a Salt Mining, Processing, and Distribution Business.",
-  "requestFramePermissions": [],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
-}

@@ -8,16 +8,18 @@
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@sentry/react": "^10.75.0",
+    "@supabase/supabase-js": "^2.116.0",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "vite": "^6.2.3",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

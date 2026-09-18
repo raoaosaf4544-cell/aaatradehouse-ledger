@@ -1,156 +1,226 @@
-import React, { useState } from 'react';
-import { Plus, ArrowUpRight, ArrowDownRight } from 'lucide-react';
-import { AppData, LedgerTransaction } from '../types';
+import { useEffect, useState } from 'react'
+import { ArrowDownLeft, ArrowUpRight } from 'lucide-react'
+import { engine } from '../lib/engine'
+import type { EventRow } from '../lib/types'
+import { Card, EmptyState, ErrorBanner, Money, SectionTitle, Spinner } from './ui'
+import MoneyOutForm from './MoneyOutForm'
 
-interface Props {
-  data: AppData;
-  updateData: (newData: Partial<AppData>) => void;
-}
+export default function CashLedger() {
+  const [events, setEvents] = useState<EventRow[] | null>(null)
+  const [error, setError] = useState<unknown>(null)
+  const [inError, setInError] = useState<unknown>(null)
 
-export default function CashLedger({ data, updateData }: Props) {
-  const [showForm, setShowForm] = useState(false);
-  const [formData, setFormData] = useState<Partial<LedgerTransaction>>({
-    date: new Date().toISOString().split('T')[0],
-    type: 'In',
-    category: 'Sales',
-    description: '',
-    amount: 0,
-  });
+  async function load() {
+    try {
+      setEvents(await engine.listEvents(100))
+    } catch (e) {
+      setError(e)
+    }
+  }
 
-  const handleAdd = (e: React.FormEvent) => {
-    e.preventDefault();
-    const newTxn: LedgerTransaction = {
-      id: `TXN-${Date.now()}`,
-      date: formData.date!,
-      type: formData.type as 'In' | 'Out',
-      category: formData.category as any,
-      description: formData.description!,
-      amount: Number(formData.amount),
-    };
-    
-    updateData({ ledger: [...data.ledger, newTxn] });
-    
-    setFormData({
-      ...formData,
-      description: '',
-      amount: 0,
-    });
-    setShowForm(false);
-  };
-
-  const formatPKR = (num: number) => 
-    new Intl.NumberFormat('en-PK', { style: 'currency', currency: 'PKR', maximumFractionDigits: 0 }).format(num);
-
-  const cashIn = data.ledger.filter(t => t.type === 'In').reduce((sum, t) => sum + t.amount, 0);
-  const cashOut = data.ledger.filter(t => t.type === 'Out').reduce((sum, t) => sum + t.amount, 0);
-  const netCash = data.openingBalances.cashOnHand + cashIn - cashOut;
+  useEffect(() => {
+    load()
+  }, [])
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-100">
-        <div>
-          <h2 className="text-xl font-bold text-slate-800">Cash Ledger</h2>
-          <p className="text-slate-500 text-sm mt-1">
-            Running Balance: <span className="font-bold text-slate-800">{formatPKR(netCash)}</span>
-          </p>
-        </div>
-        <button 
-          onClick={() => setShowForm(!showForm)}
-          className="w-full sm:w-auto bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-800 transition flex items-center justify-center gap-2"
-        >
-          <Plus className="w-4 h-4" />
-          {showForm ? 'Cancel' : 'Log Transaction'}
-        </button>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <MoneyOutForm onPosted={load} />
+        <MoneyInCard onPosted={load} onError={setInError} />
       </div>
 
-      {showForm && (
-        <form onSubmit={handleAdd} className="bg-slate-50 border border-slate-200 p-6 rounded-2xl shadow-sm grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">Date</label>
-            <input type="date" required value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} className="w-full px-3 py-2 bg-white rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-400" />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">Type</label>
-            <select value={formData.type} onChange={e => setFormData({...formData, type: e.target.value as any})} className="w-full px-3 py-2 bg-white rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-400">
-              <option value="In">Money In (+)</option>
-              <option value="Out">Money Out (-)</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">Category</label>
-            <select value={formData.category} onChange={e => setFormData({...formData, category: e.target.value as any})} className="w-full px-3 py-2 bg-white rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-400">
-              <option value="Sales">Sales</option>
-              <option value="Purchase">Purchase</option>
-              <option value="Expense">Expense</option>
-              <option value="Opening Balance">Opening Balance</option>
-              <option value="Other">Other</option>
-            </select>
-          </div>
-          <div className="lg:col-span-2">
-            <label className="block text-xs font-semibold text-slate-700 mb-1">Description</label>
-            <input type="text" required placeholder="Payment details..." value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="w-full px-3 py-2 bg-white rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-400" />
-          </div>
-          <div className="lg:col-span-2">
-            <label className={`block text-xs font-semibold mb-1 ${formData.type === 'In' ? 'text-emerald-700' : 'text-rose-700'}`}>Amount (PKR)</label>
-            <input type="number" required min="1" value={formData.amount || ''} onChange={e => setFormData({...formData, amount: Number(e.target.value)})} className={`w-full px-3 py-2 bg-white rounded-lg border focus:outline-none focus:ring-2 ${formData.type === 'In' ? 'border-emerald-200 focus:ring-emerald-500' : 'border-rose-200 focus:ring-rose-500'}`} />
-          </div>
-          
-          <div className="lg:col-span-3 flex justify-end items-end mt-2">
-            <button type="submit" className="bg-slate-900 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-slate-800 transition">Save Transaction</button>
-          </div>
-        </form>
-      )}
+      {error && <ErrorBanner error={error} />}
 
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-        <div className="overflow-x-auto max-h-[600px]">
-          <table className="w-full text-sm text-left">
-            <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-y border-slate-100 sticky top-0 z-10">
-              <tr>
-                <th className="px-6 py-4 font-medium">Date & ID</th>
-                <th className="px-6 py-4 font-medium">Category</th>
-                <th className="px-6 py-4 font-medium">Description</th>
-                <th className="px-6 py-4 font-medium text-right">Money In</th>
-                <th className="px-6 py-4 font-medium text-right">Money Out</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {data.ledger.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-slate-500">No transactions recorded yet.</td>
+      <Card>
+        <SectionTitle>Recent events</SectionTitle>
+        {!events ? (
+          <Spinner />
+        ) : events.length === 0 ? (
+          <EmptyState>No events recorded yet.</EmptyState>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
+                  <th className="pb-2">Date</th>
+                  <th className="pb-2">Ref</th>
+                  <th className="pb-2">Description</th>
+                  <th className="pb-2 text-right">Amount</th>
                 </tr>
-              )}
-              {data.ledger.slice().reverse().map((t) => (
-                <tr key={t.id} className="hover:bg-slate-50/50 transition-colors">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="font-medium text-slate-800">{new Date(t.date).toLocaleDateString()}</div>
-                    <div className="text-xs text-slate-400">{t.id}</div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="px-2.5 py-1 bg-slate-100 text-slate-600 rounded-md text-xs font-medium">{t.category}</span>
-                  </td>
-                  <td className="px-6 py-4 text-slate-700">{t.description}</td>
-                  <td className="px-6 py-4 text-right font-semibold text-emerald-600">
-                    {t.type === 'In' ? (
-                      <div className="flex items-center justify-end gap-1">
-                        <ArrowDownRight className="w-3 h-3" />
-                        {formatPKR(t.amount)}
-                      </div>
-                    ) : '-'}
-                  </td>
-                  <td className="px-6 py-4 text-right font-semibold text-rose-600">
-                    {t.type === 'Out' ? (
-                      <div className="flex items-center justify-end gap-1">
-                        <ArrowUpRight className="w-3 h-3" />
-                        {formatPKR(t.amount)}
-                      </div>
-                    ) : '-'}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+              </thead>
+              <tbody>
+                {events.slice(0, 50).map((e) => (
+                  <tr key={e.id} className="border-b border-slate-100">
+                    <td className="whitespace-nowrap py-2 text-slate-600">{e.occurred_on}</td>
+                    <td className="py-2 font-mono text-xs">{e.event_ref}</td>
+                    <td className="max-w-[24rem] truncate py-2" title={e.description}>
+                      <span className="mr-2 inline-flex items-center">
+                        {e.event_type === 'capital_injection' || e.event_type === 'other' ? (
+                          <ArrowDownLeft className="h-3.5 w-3.5 text-emerald-600" />
+                        ) : (
+                          <ArrowUpRight className="h-3.5 w-3.5 text-rose-500" />
+                        )}
+                      </span>
+                      {e.description}
+                    </td>
+                    <td className="py-2 text-right">
+                      <Money paisa={e.total_paisa} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
     </div>
-  );
+  )
+}
+
+function MoneyInCard({
+  onPosted,
+  onError,
+}: {
+  onPosted: () => void
+  onError: (e: unknown) => void
+}) {
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [amount, setAmount] = useState('')
+  const [description, setDescription] = useState('')
+  const [toSuspense, setToSuspense] = useState(false)
+  const [success, setSuccess] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  const amountPaisa = (() => {
+    const n = Number(amount)
+    return Number.isFinite(n) && n > 0 ? Math.round(n * 100) : 0
+  })()
+  const valid = amountPaisa > 0 && description.trim().length > 0
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!valid) return
+    setBusy(true)
+    setSuccess(null)
+    try {
+      const ref = await engine.postEvent({
+        eventType: 'other',
+        occurredOn: date,
+        description: description.trim(),
+        lines: toSuspense
+          ? [
+              { account: '1000', debit: amountPaisa },
+              { account: '1900', credit: amountPaisa },
+            ]
+          : [
+              { account: '1000', debit: amountPaisa },
+              { account: '4900', credit: amountPaisa },
+            ],
+        partyType: 'other',
+      })
+      setSuccess(`Recorded as ${ref}.`)
+      setAmount('')
+      setDescription('')
+      onPosted()
+    } catch (err) {
+      onError(err)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Card>
+      <SectionTitle>Record money in</SectionTitle>
+      <form
+        onSubmit={(e) => {
+          onError(null)
+          submit(e).catch(() => {})
+        }}
+        className="space-y-4"
+      >
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-slate-700">Date</span>
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+              required
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-slate-700">Amount (PKR)</span>
+            <input
+              type="number"
+              min="1"
+              step="0.01"
+              inputMode="decimal"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="0.00"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+              required
+            />
+          </label>
+        </div>
+
+        <label className="block text-sm">
+          <span className="mb-1 block font-medium text-slate-700">Where did it come from?</span>
+          <input
+            type="text"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="e.g. roznamcha aamdani…"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+            required
+          />
+        </label>
+
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={toSuspense}
+            onChange={(e) => setToSuspense(e.target.checked)}
+            className="mt-0.5"
+          />
+          <span>
+            Not sure what this is — send it to <strong>Suspense</strong> for review instead of
+            booking it as income.
+          </span>
+        </label>
+
+        <div className="rounded-lg bg-slate-50 p-4 text-sm">
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            What the engine will record
+          </div>
+          <div className="space-y-1 font-mono text-xs">
+            <div className="flex justify-between">
+              <span>Dr 1000 — Cash on Hand</span>
+              <span><Money paisa={amountPaisa} /></span>
+            </div>
+            <div className="flex justify-between">
+              <span>Cr {toSuspense ? '1900 — Suspense (review)' : '4900 — Other Income'}</span>
+              <span><Money paisa={amountPaisa} /></span>
+            </div>
+          </div>
+        </div>
+
+        {success && (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+            {success}
+          </div>
+        )}
+
+        <button
+          type="submit"
+          disabled={!valid || busy}
+          className="w-full rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+        >
+          {busy ? 'Posting…' : 'Record it'}
+        </button>
+      </form>
+    </Card>
+  )
 }
