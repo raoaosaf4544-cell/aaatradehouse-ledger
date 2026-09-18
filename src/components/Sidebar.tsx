@@ -1,4 +1,4 @@
-import { Boxes, Flag, LayoutDashboard, Wallet, X, BarChart3 } from 'lucide-react'
+import { Boxes, Flag, LayoutDashboard, Wallet, X, BarChart3, PlusCircle, Landmark, ShoppingCart, Hammer, BookUser } from 'lucide-react'
 
 export default function Sidebar({
   activeTab,
@@ -17,6 +17,13 @@ export default function Sidebar({
     { id: 'salt', name: 'Salt Inventory', icon: Boxes },
     { id: 'financials', name: 'Financials & Trial Balance', icon: BarChart3 },
     { id: 'review', name: 'Review Queue', icon: Flag },
+  ]
+
+  const recordTabs = [
+    { id: 'record-capital', name: 'Add Investment Money', icon: Landmark },
+    { id: 'record-purchase', name: 'Buy Inventory', icon: ShoppingCart },
+    { id: 'record-crush', name: 'Crush Salt', icon: Hammer },
+    { id: 'record-moneyout', name: 'Record Money Out', icon: BookUser },
   ]
 
   return (
@@ -44,6 +51,19 @@ export default function Sidebar({
         </div>
         <nav className="flex-1 overflow-y-auto py-4">
           <ul className="space-y-1 px-3">
+            <li>
+              <button
+                onClick={() => setActiveTab('record')}
+                className={`mb-2 flex w-full items-center gap-3 rounded-lg px-3 py-3 text-sm font-bold transition-colors ${
+                  activeTab === 'record' || activeTab.startsWith('record-')
+                    ? 'bg-emerald-500/15 text-emerald-300'
+                    : 'bg-emerald-600 text-white shadow hover:bg-emerald-500'
+                }`}
+              >
+                <PlusCircle className="h-5 w-5 shrink-0" />
+                <span>Record What Happened</span>
+              </button>
+            </li>
             {tabs.map((tab) => (
               <li key={tab.id}>
                 <button
@@ -52,6 +72,26 @@ export default function Sidebar({
                     activeTab === tab.id
                       ? 'bg-blue-600/10 text-blue-400'
                       : 'hover:bg-slate-800 hover:text-slate-100'
+                  }`}
+                >
+                  <tab.icon className="h-4 w-4 shrink-0" />
+                  <span className="truncate">{tab.name}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-4 px-6 text-xs font-semibold uppercase tracking-widest text-slate-600">
+            Quick record
+          </div>
+          <ul className="mt-1 space-y-1 px-3">
+            {recordTabs.map((tab) => (
+              <li key={tab.id}>
+                <button
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
+                    activeTab === tab.id
+                      ? 'bg-blue-600/10 text-blue-400'
+                      : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
                   }`}
                 >
                   <tab.icon className="h-4 w-4 shrink-0" />

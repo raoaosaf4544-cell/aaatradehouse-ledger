@@ -72,6 +72,60 @@ export type ReviewItem = {
   created_at: string
 }
 
+export type Product = {
+  id: number
+  code: string
+  name: string
+  form: 'raw' | 'bulk_processed' | 'packaged' | 'packaging_material' | string
+  base_unit: string | null
+  is_active: boolean
+}
+
+export type Location = {
+  id: number
+  code: string
+  name: string
+  kind: string
+  is_active: boolean
+}
+
+export type BatchRow = {
+  id: number
+  batch_code: string
+  product_code: string
+  product_name: string
+  location_code: string
+  location_name: string
+  status: string
+  opened_on: string
+  note: string | null
+  onhand_grams: number
+  value_paisa: number
+  wastage_grams: number
+  wastage_value_paisa: number
+}
+
+export type GradeOutput = {
+  product_code: string
+  qty_kg: number
+  value_pkr?: number
+}
+
+export type PurchaseResult = {
+  event_ref: string
+  batch_code: string
+}
+
+export type ProcessRunResult = {
+  event_ref: string
+  input_batch: string
+  input_value_paisa: number
+  wastage_grams: number
+  wastage_value_paisa: number
+  wastage_expense_paisa: number
+  outputs: { batch_code: string; product_code: string; product_name: string; qty_grams: number; value_paisa: number }[]
+}
+
 /** Per-event ledger lines for the drill-down view. */
 export type LedgerEntryRow = {
   id: number

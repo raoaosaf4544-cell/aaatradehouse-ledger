@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState } from 'react'
-import { RefreshCw, ShieldAlert, ShieldCheck } from 'lucide-react'
+import { Hammer, Landmark, PlusCircle, RefreshCw, ShieldAlert, ShieldCheck, ShoppingCart } from 'lucide-react'
 import { engine, InvariantError } from '../lib/engine'
 import { supabase } from '../lib/supabase'
 import type { AccountBalance, EventRow, LedgerEntryRow, StockOnHand } from '../lib/types'
@@ -20,9 +20,11 @@ type Snapshot = {
   stock: StockOnHand[]
   events: EventRow[]
   lines: Map<number, LedgerEntryRow[]>
+  expectedCashPaisa: number
+  expectedInvPaisa: number
 }
 
-export default function Dashboard() {
+export default function Dashboard({ go }: { go?: (tab: string) => void }) {
   const [snap, setSnap] = useState<Snapshot | null>(null)
   const [error, setError] = useState<unknown>(null)
   const [busy, setBusy] = useState(false)
@@ -35,14 +37,31 @@ export default function Dashboard() {
       const [balances, stock, events] = await Promise.all([
         engine.accountBalances(),
         engine.stockOnHand(),
-        engine.listEvents(30),
+        engine.listEvents(1000),
       ])
       const find = (code: string) => balances.find((b) => b.code === code)
       const inventoryTotalPaisa = balances
         .filter((b) => ['1200', '1210', '1220', '1230', '1300', '1310'].includes(b.code))
         .reduce((s, b) => s + b.balance_paisa, 0)
       const lines = await engine.eventLines(events.map((e) => e.id))
-      setSnap({ cash: find('1000'), vehicle: find('1400'), livestock: find('1450'), suspense: find('1900'), capital: find('3000'), inventoryTotalPaisa, stock, events, lines })
+
+      // Reconciliation: expected = Excel baseline + net effect of every event posted
+      // through the app. This stays a live integrity check after real operations begin.
+      const INV_ACCOUNTS = new Set(['1200', '1210', '1220', '1230', '1300', '1310'])
+      let cashDelta = 0
+      let invDelta = 0
+      for (const e of events) {
+        if (e.source === 'excel_import') continue
+        for (const l of lines.get(e.id) ?? []) {
+          const net = l.debit_paisa - l.credit_paisa
+          if (l.account_code === '1000') cashDelta += net
+          if (INV_ACCOUNTS.has(l.account_code)) invDelta += net
+        }
+      }
+      const expectedCashPaisa = EXPECTED_CASH_PAISA + cashDelta
+      const expectedInvPaisa = EXPECTED_INV_PAISA + invDelta
+
+      setSnap({ cash: find('1000'), vehicle: find('1400'), livestock: find('1450'), suspense: find('1900'), capital: find('3000'), inventoryTotalPaisa, stock, events, lines, expectedCashPaisa, expectedInvPaisa })
     } catch (e) {
       setError(e)
     } finally {
@@ -68,11 +87,31 @@ export default function Dashboard() {
     )
   if (!snap) return <Spinner />
 
-  const cashOk = snap.cash?.balance_paisa === EXPECTED_CASH_PAISA
-  const invOk = snap.inventoryTotalPaisa === EXPECTED_INV_PAISA
+  const cashOk = snap.cash?.balance_paisa === snap.expectedCashPaisa
+  const invOk = snap.inventoryTotalPaisa === snap.expectedInvPaisa
 
   return (
     <div className="space-y-6">
+      {go && (
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {[
+            { id: 'record-capital', label: 'Add Investment', icon: Landmark, cls: 'hover:border-emerald-300 hover:bg-emerald-50' },
+            { id: 'record-purchase', label: 'Buy Inventory', icon: ShoppingCart, cls: 'hover:border-indigo-300 hover:bg-indigo-50' },
+            { id: 'record-crush', label: 'Crush Salt', icon: Hammer, cls: 'hover:border-amber-300 hover:bg-amber-50' },
+            { id: 'record', label: 'More…', icon: PlusCircle, cls: 'hover:border-slate-300 hover:bg-slate-50' },
+          ].map((a) => (
+            <button
+              key={a.id}
+              onClick={() => go(a.id)}
+              className={`flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left text-sm font-semibold text-slate-700 shadow-sm transition ${a.cls}`}
+            >
+              <a.icon className="h-5 w-5 shrink-0 text-slate-500" />
+              {a.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {busy && (
         <div className="flex items-center gap-2 text-xs text-slate-400">
           <RefreshCw className="h-3 w-3 animate-spin" /> refreshing…
@@ -84,14 +123,18 @@ export default function Dashboard() {
           label="Cash on Hand"
           sub={
             cashOk
-              ? '✓ matches Excel baseline (PKR 77,044)'
-              : `baseline mismatch — expected PKR 77,044.00`
+              ? '✓ reconciles: Excel baseline + every entry posted here'
+              : `reconciliation FAILED — expected PKR ${(snap.expectedCashPaisa / 100).toLocaleString()}`
           }
           tone={cashOk ? 'emerald' : 'rose'}
         >
           <Money paisa={snap.cash?.balance_paisa ?? 0} />
         </StatCard>
-        <StatCard label="Inventory Value" sub={invOk ? '✓ BATCH-001: 15,210 kg' : 'baseline mismatch'} tone={invOk ? 'emerald' : 'rose'}>
+        <StatCard
+          label="Inventory Value"
+          sub={invOk ? '✓ reconciles with batch movements' : 'reconciliation FAILED'}
+          tone={invOk ? 'emerald' : 'rose'}
+        >
           <Money paisa={snap.inventoryTotalPaisa} />
         </StatCard>
         <StatCard label="Vehicle (side asset)" sub="quarantined from salt COGS" tone="blue">
@@ -206,11 +249,12 @@ export default function Dashboard() {
             <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-rose-600" />
           )}
           <div className="text-sm text-slate-600">
-            <span className="font-semibold text-slate-800">Baseline integrity: </span>
-            Cash {cashOk ? 'matches' : 'DOES NOT match'} the Excel closing balance of PKR 77,044.00.
-            Inventory {invOk ? 'matches' : 'DOES NOT match'} BATCH-001 at PKR 114,270.00. Every
-            figure on this page is computed by the database from the append-only ledgers — nothing
-            is hardcoded in the app.
+            <span className="font-semibold text-slate-800">Ledger integrity: </span>
+            Cash {cashOk ? 'reconciles exactly' : 'does NOT reconcile'} with the Excel baseline of
+            PKR 77,044.00 plus every entry posted through this app. Inventory{' '}
+            {invOk ? 'reconciles exactly' : 'does NOT reconcile'} with BATCH-001 (PKR 114,270.00)
+            plus all purchases and processing runs. Every figure on this page is computed by the
+            database from the append-only ledgers — nothing is hardcoded in the app.
           </div>
         </div>
       </Card>
@@ -223,7 +267,9 @@ function TypeBadge({ type }: { type: string }) {
     capital_injection: 'bg-emerald-100 text-emerald-700',
     expense: 'bg-slate-100 text-slate-600',
     asset_purchase: 'bg-blue-100 text-blue-700',
+    drawings: 'bg-rose-100 text-rose-700',
     purchase: 'bg-indigo-100 text-indigo-700',
+    process_run: 'bg-amber-100 text-amber-700',
     other: 'bg-amber-100 text-amber-700',
     opening_inventory: 'bg-indigo-100 text-indigo-700',
   }

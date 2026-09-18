@@ -6,19 +6,31 @@ import CashLedger from './components/CashLedger'
 import SaltInventory from './components/SaltInventory'
 import Financials from './components/Financials'
 import ReviewQueue from './components/ReviewQueue'
+import Record from './components/Record'
+import CapitalInjectionForm from './components/CapitalInjectionForm'
+import SaltPurchaseForm from './components/SaltPurchaseForm'
+import CrushRunForm from './components/CrushRunForm'
+import MoneyOutForm from './components/MoneyOutForm'
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+  const [dataVersion, setDataVersion] = useState(0)
+
+  function go(tab: string) {
+    setActiveTab(tab)
+    setIsSidebarOpen(false)
+  }
+
+  function onPosted() {
+    setDataVersion((v) => v + 1)
+  }
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50 font-sans text-slate-900">
       <Sidebar
         activeTab={activeTab}
-        setActiveTab={(tab) => {
-          setActiveTab(tab)
-          setIsSidebarOpen(false)
-        }}
+        setActiveTab={go}
         isOpen={isSidebarOpen}
         setIsOpen={setIsSidebarOpen}
       />
@@ -31,7 +43,7 @@ function App() {
                 onClick={() => setIsSidebarOpen(true)}
                 className="-ml-2 rounded-lg p-2 text-slate-600 hover:bg-slate-100 md:hidden"
               >
-                <Menu className="h-6 h-6" />
+                <Menu className="h-6 w-6" />
               </button>
               <div className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white sm:flex">
                 <FileSpreadsheet className="h-5 w-5" />
@@ -49,11 +61,16 @@ function App() {
         </div>
 
         <div className="flex-1 overflow-auto p-4 md:p-8">
-          {activeTab === 'dashboard' && <Dashboard />}
+          {activeTab === 'dashboard' && <Dashboard key={dataVersion} go={go} />}
           {activeTab === 'cash' && <CashLedger />}
-          {activeTab === 'salt' && <SaltInventory />}
+          {activeTab === 'salt' && <SaltInventory key={dataVersion} />}
           {activeTab === 'financials' && <Financials />}
           {activeTab === 'review' && <ReviewQueue />}
+          {activeTab === 'record' && <Record go={go} />}
+          {activeTab === 'record-capital' && <CapitalInjectionForm onPosted={onPosted} />}
+          {activeTab === 'record-purchase' && <SaltPurchaseForm onPosted={onPosted} />}
+          {activeTab === 'record-crush' && <CrushRunForm onPosted={onPosted} />}
+          {activeTab === 'record-moneyout' && <MoneyOutForm onPosted={onPosted} />}
         </div>
       </main>
     </div>
