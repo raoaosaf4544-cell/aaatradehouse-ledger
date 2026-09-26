@@ -43,6 +43,14 @@ export class InvariantError extends Error {
 type AccountRow = { id: number; code: string; name: string }
 
 export class LedgerEngine {
+  /** app.users.id of the signed-in person; set by App after login via current_app_user(). */
+  userId: string | null = null
+
+  private createdBy(): string {
+    if (!this.userId) throw new InvariantError('Not signed in — please sign in again before recording.')
+    return this.userId
+  }
+
   /** Events with totals (from app.v_events_with_party). */
   async listEvents(limit = 500): Promise<EventRow[]> {
     const { data, error } = await supabase
@@ -195,7 +203,7 @@ export class LedgerEngine {
       p_lines: input.lines,
       p_party_type: input.partyType ?? null,
       p_party_name: input.partyName ?? null,
-      p_created_by: '11111111-1111-1111-1111-111111111111',
+      p_created_by: this.createdBy(),
     })
     if (error) throw new InvariantError(error.message)
     return data as string
@@ -227,7 +235,7 @@ export class LedgerEngine {
       p_pay_cash: input.payCash,
       p_occurred_on: input.occurredOn,
       p_note: input.note?.trim() || null,
-      p_created_by: '11111111-1111-1111-1111-111111111111',
+      p_created_by: this.createdBy(),
     })
     if (error) throw new InvariantError(error.message)
     return data as PurchaseResult
@@ -265,7 +273,7 @@ export class LedgerEngine {
       p_pay_cash: input.payCash,
       p_occurred_on: input.occurredOn,
       p_note: input.note?.trim() || null,
-      p_created_by: '11111111-1111-1111-1111-111111111111',
+      p_created_by: this.createdBy(),
     })
     if (error) throw new InvariantError(error.message)
     return data as ProcessRunResult
@@ -412,7 +420,7 @@ export class LedgerEngine {
       p_occurred_on: input.occurredOn,
       p_note: input.note?.trim() || null,
       p_idempotency_key: null,
-      p_created_by: '11111111-1111-1111-1111-111111111111',
+      p_created_by: this.createdBy(),
     })
     if (error) throw new InvariantError(error.message)
     return data as SaleResult
@@ -448,7 +456,7 @@ export class LedgerEngine {
       p_occurred_on: input.occurredOn,
       p_note: input.note?.trim() || null,
       p_idempotency_key: null,
-      p_created_by: '11111111-1111-1111-1111-111111111111',
+      p_created_by: this.createdBy(),
     })
     if (error) throw new InvariantError(error.message)
     return data as DispatchResult
@@ -487,6 +495,7 @@ export class LedgerEngine {
       p_occurred_on: input.occurredOn,
       p_note: input.note?.trim() || null,
       p_idempotency_key: null,
+      p_created_by: this.createdBy(),
     })
     if (error) throw new InvariantError(error.message)
     return data as { sale_ref: string; dispatch_ref: string; revenue_paisa: number; cash_paisa: number; ar_paisa: number; cogs_paisa: number; party_created: boolean } | { duplicate: boolean; sale_ref: string }
@@ -506,7 +515,7 @@ export class LedgerEngine {
       p_amount_paisa: Math.round(input.amountPkr * 100),
       p_occurred_on: input.occurredOn,
       p_note: input.note?.trim() || null,
-      p_created_by: '11111111-1111-1111-1111-111111111111',
+      p_created_by: this.createdBy(),
       p_idempotency_key: null,
     })
     if (error) throw new InvariantError(error.message)

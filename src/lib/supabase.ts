@@ -11,7 +11,7 @@ if (!url || !anonKey) {
 }
 
 export const supabase = createClient(url, anonKey, {
-  auth: { persistSession: false },
+  auth: { persistSession: true, autoRefreshToken: true },
 })
 
 export const IS_DB_CONFIGURED = Boolean(url && anonKey)

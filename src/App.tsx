@@ -1,5 +1,10 @@
-import { useState } from 'react'
-import { FileSpreadsheet, Menu } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import type { Session } from '@supabase/supabase-js'
+import { FileSpreadsheet, LogOut, Menu } from 'lucide-react'
+import { supabase } from './lib/supabase'
+import { engine } from './lib/engine'
+import Login from './components/Login'
+import { Spinner } from './components/ui'
 import Sidebar from './components/Sidebar'
 import Dashboard from './components/Dashboard'
 import CashLedger from './components/CashLedger'
@@ -14,7 +19,56 @@ import MoneyOutForm from './components/MoneyOutForm'
 import SellSaltForm from './components/SellSaltForm'
 import Debtors from './components/Debtors'
 
+type AppUser = { id: string; name: string; role: string }
+
+function signOut() {
+  void supabase.auth.signOut()
+}
+
+/** Gate: login screen until signed in; only accounts linked in app.users get the ledger. */
 function App() {
+  const [session, setSession] = useState<Session | null | undefined>(undefined)
+  const [user, setUser] = useState<AppUser | null | undefined>(undefined)
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setSession(data.session))
+    const { data } = supabase.auth.onAuthStateChange((_event, s) => setSession(s))
+    return () => data.subscription.unsubscribe()
+  }, [])
+
+  const authUserId = session?.user.id
+  useEffect(() => {
+    if (!authUserId) {
+      engine.userId = null
+      setUser(undefined)
+      return
+    }
+    supabase.rpc('current_app_user').then(({ data, error }) => {
+      const u = error ? null : ((data as AppUser | null) ?? null)
+      engine.userId = u?.id ?? null
+      setUser(u)
+    })
+  }, [authUserId])
+
+  if (session === undefined) return <Spinner label="Loading…" />
+  if (!session) return <Login />
+  if (user === undefined) return <Spinner label="Checking your account…" />
+  if (!user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
+        <div className="w-full max-w-sm space-y-4 rounded-2xl border border-slate-200 bg-white p-6 text-center">
+          <p className="text-lg font-semibold text-slate-800">This account is not authorised for the ledger.</p>
+          <button onClick={signOut} className="w-full rounded-xl bg-slate-900 py-3.5 text-lg font-semibold text-white">
+            Sign out
+          </button>
+        </div>
+      </div>
+    )
+  }
+  return <Ledger userName={user.name} />
+}
+
+function Ledger({ userName }: { userName: string }) {
   const [activeTab, setActiveTab] = useState('dashboard')
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [dataVersion, setDataVersion] = useState(0)
@@ -39,7 +93,7 @@ function App() {
 
       <main className="relative flex min-w-0 w-full flex-1 flex-col">
         <div className="z-10 flex shrink-0 flex-col items-start justify-between gap-4 border-b border-slate-200 bg-white px-4 py-4 shadow-sm sm:flex-row sm:items-center md:px-8 md:py-5">
-          <div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:justify-start sm:gap-3">
+          <div className="flex w-full items-center justify-between gap-2 sm:gap-3">
             <div className="flex items-center gap-2 sm:gap-3">
               <button
                 onClick={() => setIsSidebarOpen(true)}
@@ -59,6 +113,14 @@ function App() {
                 </div>
               </div>
             </div>
+            <button
+              onClick={signOut}
+              title={`Signed in as ${userName}`}
+              className="flex min-h-11 shrink-0 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-medium text-slate-600 hover:bg-slate-100"
+            >
+              <LogOut className="h-4 w-4" />
+              Sign out
+            </button>
           </div>
         </div>
 
