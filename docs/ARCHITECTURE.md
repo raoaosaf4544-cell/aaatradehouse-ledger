@@ -276,13 +276,19 @@ Not fixed yet — tracked here so nobody relies on the missing behaviour.
 
 ## 15. Pending corrections — awaiting owner confirmation
 
-Found by auditing the app against the paper register. **Nothing has been changed.** Each item will be
-fixed with a reversing entry (never a delete) only after the owner confirms it.
+Found by auditing the app against the paper register. **Nothing has been changed in the books.** Each
+error will be fixed with a reversing entry (never a delete) only after the owner confirms it.
 
-| Date | Entry | App says | Register says |
-|---|---|---|---|
-| 28 Aug | "Petrol" CL-20260828-029 | Rs 5,000 | Rs 500 |
-| 6 Sep | EV-000246 | Rs 900 | not in register |
-| 6 Sep | EV-000247 | Rs 24,000 | not in register |
-| 8 Sep | Correction entries EV-000252 to EV-000262 | Rs 3,630 total | not in register |
-| — | "Sabiqa" entries EV-000211 to EV-000214 | Rs 1,650 cash-in | not in register |
+| Date | Entry | App says | Register says | Status |
+|---|---|---|---|---|
+| 28 Aug | "Petrol" CL-20260828-029 | Rs 5,000 | Rs 500 | awaiting confirmation |
+| 6 Sep | EV-000246 | Rs 900 | not in register | awaiting father |
+| 6 Sep | EV-000247 | Rs 24,000 | not in register | awaiting father |
+| 13 Sep | EV-000210 "sell Rs 3,150 (no kg)" | Rs 3,150 | duplicate of Hakim Ali's Rs 3,100 payment EV-000174 | awaiting confirmation |
+| 14 Sep | Salt purchase EV-000169 | Rs 117,500 held as a payable | **confirmed by owner: paid in cash in full that day** | confirmed — correction to be posted |
+
+Not errors, recategorisation only:
+
+- "Sabiqa" EV-000211 to EV-000214 (Rs 1,650 cash-in): real cash received for earlier sales.
+  Amounts are correct; they only need moving out of Suspense later.
+- 8 Sep correction entries EV-000252 to EV-000262 (Rs 3,630 total) are in the register and correct — no action.
