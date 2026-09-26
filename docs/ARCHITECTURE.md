@@ -260,3 +260,29 @@ sales after inventory exists (COGS needs batches).
 - Whether any supplier bills freight separately after delivery (C4 scope).
 - Depreciation policy for the motorcycle (asset is booked at cost for now).
 - Exact PIN/password approach for father's login (recommend 4-digit PIN per user, no email).
+
+## 14. Known gaps
+
+Recorded 2026-09-27 after adding the baseline migration `20260926231834_baseline_live_state.sql`.
+Not fixed yet — tracked here so nobody relies on the missing behaviour.
+
+- **An empty database cannot be rebuilt from `supabase/migrations/` alone.** `app.parties` is only
+  created in the baseline (dated after phase3), but the phase3 migrations already reference it.
+  Replaying the migrations in order against an empty database fails at phase3. The live database
+  is unaffected: every baseline statement is a no-op against it.
+- **Two JARVIS tables need sequences that are not in any migration file.** `public.notifications`
+  and `public.reject_log` default their `id` to `notifications_id_seq` / `reject_log_id_seq`,
+  which the baseline does not create. On an empty database those two `create table` statements fail.
+
+## 15. Pending corrections — awaiting owner confirmation
+
+Found by auditing the app against the paper register. **Nothing has been changed.** Each item will be
+fixed with a reversing entry (never a delete) only after the owner confirms it.
+
+| Date | Entry | App says | Register says |
+|---|---|---|---|
+| 28 Aug | "Petrol" CL-20260828-029 | Rs 5,000 | Rs 500 |
+| 6 Sep | EV-000246 | Rs 900 | not in register |
+| 6 Sep | EV-000247 | Rs 24,000 | not in register |
+| 8 Sep | Correction entries EV-000252 to EV-000262 | Rs 3,630 total | not in register |
+| — | "Sabiqa" entries EV-000211 to EV-000214 | Rs 1,650 cash-in | not in register |
