@@ -2,12 +2,26 @@ import { Fragment, useEffect, useState } from 'react'
 import { Hammer, Landmark, PlusCircle, RefreshCw, ShieldAlert, ShieldCheck, ShoppingCart } from 'lucide-react'
 import { engine, InvariantError } from '../lib/engine'
 import { supabase } from '../lib/supabase'
-import type { AccountBalance, EventRow, LedgerEntryRow, StockOnHand } from '../lib/types'
+import type { AccountBalance, DebtorRow, EventRow, LedgerEntryRow, StockOnHand } from '../lib/types'
 import { Card, ErrorBanner, Kg, Money, SectionTitle, Spinner, StatCard } from './ui'
 
 /** Dashboard: every number read from derived database views. No client-side math. */
 
-const EXPECTED_CASH_PAISA = 7_704_400
+/**
+ * Audit-trail baselines (paisa) as of the 2026-09-19 full audit.
+ *
+ * 8,132,400 = verified Excel-side cash baseline. Reconciliation identity:
+ *   live Cash (1000) − Σ cash effect of every NON-excel event = this baseline.
+ * Derivation: Phase 0 baseline 7,704,400, then audit corrections to EXCEL-import
+ * events only (all documented in app.events, source='correction' / deleted):
+ *   −49,000  three duplicate UNCLEAR income events deleted (Rs 50/170/270 —
+ *            duplicates of INV-00043/44/45, already booked through the app)
+ *   +477,000 7 Sep "Kulb" page-total misread corrected (Rs 5,300 booked → Rs 530;
+ *            page control is 1,080 = 150+200+100+100+530)
+ *   = 8,132,400. The 8 Sep correction events are app-posted expenses and are
+ *   counted by the live delta below, NOT here.
+ */
+const EXPECTED_CASH_PAISA = 8_132_400
 const EXPECTED_INV_PAISA = 11_427_000
 
 type Snapshot = {
@@ -15,6 +29,7 @@ type Snapshot = {
   vehicle: AccountBalance | undefined
   livestock: AccountBalance | undefined
   suspense: AccountBalance | undefined
+  debtors: DebtorRow[]
   capital: AccountBalance | undefined
   inventoryTotalPaisa: number
   stock: StockOnHand[]
@@ -34,10 +49,11 @@ export default function Dashboard({ go }: { go?: (tab: string) => void }) {
     setBusy(true)
     setError(null)
     try {
-      const [balances, stock, events] = await Promise.all([
+      const [balances, stock, events, debtors] = await Promise.all([
         engine.accountBalances(),
         engine.stockOnHand(),
         engine.listEvents(1000),
+        engine.debtors(),
       ])
       const find = (code: string) => balances.find((b) => b.code === code)
       const inventoryTotalPaisa = balances
@@ -61,7 +77,7 @@ export default function Dashboard({ go }: { go?: (tab: string) => void }) {
       const expectedCashPaisa = EXPECTED_CASH_PAISA + cashDelta
       const expectedInvPaisa = EXPECTED_INV_PAISA + invDelta
 
-      setSnap({ cash: find('1000'), vehicle: find('1400'), livestock: find('1450'), suspense: find('1900'), capital: find('3000'), inventoryTotalPaisa, stock, events, lines, expectedCashPaisa, expectedInvPaisa })
+      setSnap({ cash: find('1000'), vehicle: find('1400'), livestock: find('1450'), suspense: find('1900'), capital: find('3000'), inventoryTotalPaisa, stock, events, lines, expectedCashPaisa, expectedInvPaisa, debtors })
     } catch (e) {
       setError(e)
     } finally {
@@ -148,6 +164,44 @@ export default function Dashboard({ go }: { go?: (tab: string) => void }) {
           <Money paisa={snap.suspense?.balance_paisa ?? 0} />
         </StatCard>
       </div>
+
+      <Card>
+        <SectionTitle>Udhaar / Debtors — who owes what</SectionTitle>
+        {snap.debtors.length === 0 ? (
+          <div className="text-sm text-slate-500">No udhaar outstanding.</div>
+        ) : (
+          <>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
+                  <th className="pb-2">Shop</th>
+                  <th className="pb-2 text-right">Baqaya (PKR)</th>
+                  <th className="pb-2 text-right">Last sale</th>
+                </tr>
+              </thead>
+              <tbody>
+                {snap.debtors.map((d) => (
+                  <tr key={d.party_id} className="border-b border-slate-100">
+                    <td className="py-2 font-medium">{d.customer_name}</td>
+                    <td className="py-2 text-right">
+                      <Money paisa={d.outstanding_paisa} />
+                    </td>
+                    <td className="py-2 text-right text-slate-600">{d.last_sale_on}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {go && (
+              <button
+                onClick={() => go('debtors')}
+                className="mt-3 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
+              >
+                Open Debtors &amp; Sales — collect payments
+              </button>
+            )}
+          </>
+        )}
+      </Card>
 
       <Card>
         <SectionTitle>Stock on hand (derived from append-only movements)</SectionTitle>

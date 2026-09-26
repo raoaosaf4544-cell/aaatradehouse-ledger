@@ -11,6 +11,8 @@ import CapitalInjectionForm from './components/CapitalInjectionForm'
 import SaltPurchaseForm from './components/SaltPurchaseForm'
 import CrushRunForm from './components/CrushRunForm'
 import MoneyOutForm from './components/MoneyOutForm'
+import SellSaltForm from './components/SellSaltForm'
+import Debtors from './components/Debtors'
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
@@ -66,11 +68,13 @@ function App() {
           {activeTab === 'salt' && <SaltInventory key={dataVersion} />}
           {activeTab === 'financials' && <Financials />}
           {activeTab === 'review' && <ReviewQueue />}
+          {activeTab === 'debtors' && <Debtors key={dataVersion} onPosted={onPosted} />}
           {activeTab === 'record' && <Record go={go} />}
           {activeTab === 'record-capital' && <CapitalInjectionForm onPosted={onPosted} />}
           {activeTab === 'record-purchase' && <SaltPurchaseForm onPosted={onPosted} />}
           {activeTab === 'record-crush' && <CrushRunForm onPosted={onPosted} />}
           {activeTab === 'record-moneyout' && <MoneyOutForm onPosted={onPosted} />}
+          {activeTab === 'record-sale' && <SellSaltForm onPosted={onPosted} />}
         </div>
       </main>
     </div>

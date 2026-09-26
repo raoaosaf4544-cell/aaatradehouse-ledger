@@ -1,4 +1,4 @@
-import { BookUser, Hammer, Landmark, ShoppingCart, ArrowRight } from 'lucide-react'
+import { BookUser, Hammer, Landmark, ShoppingCart, PackageOpen, ArrowRight } from 'lucide-react'
 
 export default function Record({ go }: { go: (tab: string) => void }) {
   const actions = [
@@ -23,6 +23,13 @@ export default function Record({ go }: { go: (tab: string) => void }) {
       desc: 'Raw salt in, graded salt out. Enter weights and wastage — the engine prices every grade itself.',
       icon: Hammer,
       tone: 'from-amber-500 to-orange-500',
+    },
+    {
+      id: 'record-sale',
+      title: 'Sell Salt / Dispatch',
+      desc: 'Invoice a customer, take cash or leave a receivable, then dispatch stock — FIFO batches priced to the paisa.',
+      icon: PackageOpen,
+      tone: 'from-teal-500 to-emerald-600',
     },
     {
       id: 'cash',

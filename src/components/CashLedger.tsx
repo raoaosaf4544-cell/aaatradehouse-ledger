@@ -1,18 +1,24 @@
 import { useEffect, useState } from 'react'
 import { ArrowDownLeft, ArrowUpRight } from 'lucide-react'
 import { engine } from '../lib/engine'
-import type { EventRow } from '../lib/types'
-import { Card, EmptyState, ErrorBanner, Money, SectionTitle, Spinner } from './ui'
+import type { AccountLineRow, EventRow } from '../lib/types'
+import { Badge, Card, EmptyState, ErrorBanner, Money, SectionTitle, Spinner } from './ui'
 import MoneyOutForm from './MoneyOutForm'
 
 export default function CashLedger() {
   const [events, setEvents] = useState<EventRow[] | null>(null)
   const [error, setError] = useState<unknown>(null)
   const [inError, setInError] = useState<unknown>(null)
+  const [suspenseLines, setSuspenseLines] = useState<AccountLineRow[] | null>(null)
+  const [suspenseOpen, setSuspenseOpen] = useState(false)
 
   async function load() {
     try {
       setEvents(await engine.listEvents(100))
+      engine
+        .accountLines('1900')
+        .then(setSuspenseLines)
+        .catch(() => setSuspenseLines([]))
     } catch (e) {
       setError(e)
     }
@@ -22,6 +28,9 @@ export default function CashLedger() {
     load()
   }, [])
 
+  const suspenseDr = (suspenseLines ?? []).reduce((s, l) => s + l.debit_paisa, 0)
+  const suspenseCr = (suspenseLines ?? []).reduce((s, l) => s + l.credit_paisa, 0)
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -30,6 +39,63 @@ export default function CashLedger() {
       </div>
 
       {error && <ErrorBanner error={error} />}
+
+      <Card>
+        <button
+          onClick={() => setSuspenseOpen((o) => !o)}
+          className="flex w-full items-center justify-between text-left"
+        >
+          <SectionTitle>Unclassified (Suspense) — every line the books could not label yet</SectionTitle>
+          <Badge tone={suspenseDr - suspenseCr !== 0 ? 'amber' : 'slate'}>
+            {suspenseLines === null ? 'loading…' : `${suspenseLines.length} lines`}
+          </Badge>
+        </button>
+        <p className="mb-3 text-xs text-slate-500">
+          These are real cash movements that were recorded but not yet given a proper name
+          (money out total <Money paisa={suspenseDr} />, money in total <Money paisa={suspenseCr} />).
+          They stay here until you tell us what each one was — nothing is hidden inside the total.
+        </p>
+        {suspenseOpen &&
+          (!suspenseLines ? (
+            <Spinner />
+          ) : suspenseLines.length === 0 ? (
+            <EmptyState>Nothing unclassified — every rupee is labelled.</EmptyState>
+          ) : (
+            <div className="max-h-96 overflow-y-auto rounded-lg border border-slate-200">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50 text-left uppercase tracking-wide text-slate-500">
+                    <th className="px-3 py-2">Date</th>
+                    <th className="px-3 py-2">Ref</th>
+                    <th className="px-3 py-2">What was written in the book</th>
+                    <th className="px-3 py-2 text-right">Out</th>
+                    <th className="px-3 py-2 text-right">In</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {suspenseLines.map((l) => (
+                    <tr key={`${l.event_id}-${l.entry_seq}`} className="border-b border-slate-100 last:border-0">
+                      <td className="whitespace-nowrap px-3 py-1.5 text-slate-600">{l.occurred_on}</td>
+                      <td className="px-3 py-1.5 font-mono">{l.event_ref}</td>
+                      <td className="px-3 py-1.5">{l.description}</td>
+                      <td className="px-3 py-1.5 text-right font-mono tabular-nums">
+                        {l.debit_paisa > 0 ? <Money paisa={l.debit_paisa} /> : '—'}
+                      </td>
+                      <td className="px-3 py-1.5 text-right font-mono tabular-nums">
+                        {l.credit_paisa > 0 ? <Money paisa={l.credit_paisa} /> : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                  <tr className="bg-slate-50 font-semibold">
+                    <td colSpan={3} className="px-3 py-2">Total</td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums"><Money paisa={suspenseDr} /></td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums"><Money paisa={suspenseCr} /></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          ))}
+      </Card>
 
       <Card>
         <SectionTitle>Recent events</SectionTitle>

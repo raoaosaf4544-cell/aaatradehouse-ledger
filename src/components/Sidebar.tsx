@@ -1,4 +1,4 @@
-import { Boxes, Flag, LayoutDashboard, Wallet, X, BarChart3, PlusCircle, Landmark, ShoppingCart, Hammer, BookUser } from 'lucide-react'
+import { Boxes, Flag, LayoutDashboard, Wallet, X, BarChart3, PlusCircle, Landmark, ShoppingCart, Hammer, BookUser, HandCoins, PackageOpen } from 'lucide-react'
 
 export default function Sidebar({
   activeTab,
@@ -16,6 +16,7 @@ export default function Sidebar({
     { id: 'cash', name: 'Cash Ledger', icon: Wallet },
     { id: 'salt', name: 'Salt Inventory', icon: Boxes },
     { id: 'financials', name: 'Financials & Trial Balance', icon: BarChart3 },
+    { id: 'debtors', name: 'Debtors & Sales', icon: HandCoins },
     { id: 'review', name: 'Review Queue', icon: Flag },
   ]
 
@@ -23,6 +24,7 @@ export default function Sidebar({
     { id: 'record-capital', name: 'Add Investment Money', icon: Landmark },
     { id: 'record-purchase', name: 'Buy Inventory', icon: ShoppingCart },
     { id: 'record-crush', name: 'Crush Salt', icon: Hammer },
+    { id: 'record-sale', name: 'Sell Salt / Dispatch', icon: PackageOpen },
     { id: 'record-moneyout', name: 'Record Money Out', icon: BookUser },
   ]
 
