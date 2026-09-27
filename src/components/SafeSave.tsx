@@ -44,7 +44,22 @@ export function useSafeSave() {
       return result
     } catch (e) {
       if (e instanceof InvariantError && e.definite) {
-        // The database clearly said no: nothing was written. Unlock for correction with a fresh key.
+        // A "no" can also be the database refusing a second copy of an entry that DID save (Retry sent while
+        // the first try was still running). Ask the database before unlocking anything.
+        let entry: ConfirmedEntry | null
+        try {
+          entry = await engine.entryByKey(key)
+        } catch {
+          setPhase('failed') // can't tell: stay locked, Retry resends with the same key
+          return null
+        }
+        if (entry) {
+          setConfirmed(entry)
+          setPhase('already') // locked; "New entry" clears the form
+          setKey(newKey())
+          return null
+        }
+        // The database clearly said no and nothing is saved under this key: unlock with a fresh key.
         setError(e)
         setPhase('idle')
         setKey(newKey())
