@@ -25,10 +25,18 @@ export function clearOfflineCache() {
   markUsingCache(false)
 }
 
+// v2: Maps are stored as tagged entry lists (plain JSON turns a Map into {}). v1 keys are never read
+// back, and clearOfflineCache still wipes them because they share PREFIX.
+const key = (name: string) => `${PREFIX}v2:${owner}:${name}`
+const MAP_TAG = '__map__'
+const toJson = (_: string, v: unknown) => (v instanceof Map ? { [MAP_TAG]: [...v] } : v)
+const fromJson = (_: string, v: unknown) =>
+  v && typeof v === 'object' && MAP_TAG in v ? new Map((v as Record<string, [unknown, unknown][]>)[MAP_TAG]) : v
+
 export function remember(name: string, value: unknown) {
   if (!owner) return
   try {
-    localStorage.setItem(`${PREFIX}${owner}:${name}`, JSON.stringify(value))
+    localStorage.setItem(key(name), JSON.stringify(value, toJson))
   } catch {
     // storage full or blocked: offline view just has less to show
   }
@@ -37,8 +45,8 @@ export function remember(name: string, value: unknown) {
 export function recall<T>(name: string): T | undefined {
   if (!owner) return undefined
   try {
-    const v = localStorage.getItem(`${PREFIX}${owner}:${name}`)
-    return v === null ? undefined : (JSON.parse(v) as T)
+    const v = localStorage.getItem(key(name))
+    return v === null ? undefined : (JSON.parse(v, fromJson) as T)
   } catch {
     return undefined
   }

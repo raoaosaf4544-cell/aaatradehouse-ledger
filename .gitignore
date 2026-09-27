@@ -12,3 +12,6 @@ package-lock.json
 
 # local AI tool config
 .codex/
+
+# browser test output (screenshots/snapshots of the books) - never push
+.playwright-mcp/
