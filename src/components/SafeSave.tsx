@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { engine, InvariantError, type ConfirmedEntry } from '../lib/engine'
 import { ErrorBanner, Money } from './ui'
+import { useOffline } from '../lib/offline'
 
 const newKey = () => crypto.randomUUID()
 
@@ -22,6 +23,7 @@ export function useSafeSave() {
   const [checking, setChecking] = useState(false)
   const [startOverOffline, setStartOverOffline] = useState(false)
   const inFlight = useRef(false) // blocks a double tap before React re-renders
+  const offline = useOffline() // entries need signal: the form is disabled while offline
 
   async function save<T>(write: (key: string) => Promise<T>): Promise<T | null> {
     if (inFlight.current) return null
@@ -91,8 +93,8 @@ export function useSafeSave() {
   }
 
   return {
-    key, phase, confirmed, error, checking, startOverOffline, save, startOver, newEntry,
-    locked: phase === 'saving' || phase === 'failed' || phase === 'already',
+    key, phase, confirmed, error, checking, startOverOffline, save, startOver, newEntry, offline,
+    locked: phase === 'saving' || phase === 'failed' || phase === 'already' || offline,
   }
 }
 
@@ -145,7 +147,7 @@ export function SaveControls({
             </div>
           )}
           <div className="grid grid-cols-2 gap-3">
-            <button type="submit" className="min-h-11 rounded-xl bg-rose-600 px-4 py-3.5 text-lg font-bold text-white shadow-sm hover:bg-rose-700">
+            <button type="submit" disabled={safe.offline} className="min-h-11 rounded-xl bg-rose-600 px-4 py-3.5 text-lg font-bold text-white shadow-sm hover:bg-rose-700 disabled:opacity-60">
               Retry
             </button>
             <button
@@ -161,10 +163,10 @@ export function SaveControls({
       ) : (
         <button
           type="submit"
-          disabled={!valid || safe.phase === 'saving'}
+          disabled={!valid || safe.phase === 'saving' || safe.offline}
           className={`min-h-11 w-full rounded-xl px-4 py-3.5 text-lg font-bold text-white shadow-sm transition disabled:cursor-not-allowed disabled:bg-slate-300 ${className}`}
         >
-          {safe.phase === 'saving' ? 'Saving…' : label}
+          {safe.phase === 'saving' ? 'Saving…' : safe.offline ? 'Offline — entries need signal' : label}
         </button>
       )}
     </div>

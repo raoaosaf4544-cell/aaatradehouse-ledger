@@ -16,7 +16,10 @@ export default function Login() {
     setError(null)
     const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
     setBusy(false)
-    if (error) setError(error.message === 'Invalid login credentials' ? 'Wrong email or password.' : error.message)
+    if (!error) return
+    if (error.message === 'Invalid login credentials') setError('Wrong email or password.')
+    else if (!navigator.onLine || /fetch|network/i.test(error.message)) setError('No signal — signing in needs signal.')
+    else setError(error.message)
   }
 
   return (

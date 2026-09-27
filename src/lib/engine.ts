@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { markUsingCache, recall, remember } from './offline'
 import type {
   AccountBalance,
   EventRow,
@@ -64,9 +65,52 @@ export type ConfirmedEntry = { event_ref: string; occurred_on: string; total_pai
 
 type AccountRow = { id: number; code: string; name: string }
 
+/**
+ * Read-only methods. With no signal they return the last answer remembered for this login, so the
+ * screens still show the books (read-only). Writes and entryByKey are never answered from memory.
+ */
+const OFFLINE_READS = [
+  'listEvents', 'accountBalances', 'stockOnHand', 'batches', 'products', 'locations', 'openReviewItems',
+  'eventLines', 'accountLines', 'customers', 'customerAdvanceBalance', 'sales', 'dispatchAllocations',
+  'debtors', 'fifoPool',
+] as const
+
 export class LedgerEngine {
   /** app.users.id of the signed-in person; set by App after login via current_app_user(). */
   userId: string | null = null
+
+  constructor() {
+    const self = this as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>
+    for (const name of OFFLINE_READS) {
+      const live = self[name].bind(this)
+      self[name] = async (...args: unknown[]) => {
+        const key = name + JSON.stringify(args)
+        if (!navigator.onLine) {
+          // phone says no signal: show the remembered figures at once (no slow retries)
+          const last = recall(key)
+          if (last !== undefined) {
+            markUsingCache(true)
+            return last
+          }
+        }
+        try {
+          const value = await live(...args)
+          remember(key, value)
+          markUsingCache(false)
+          return value
+        } catch (e) {
+          if (e instanceof InvariantError && !e.definite) {
+            const last = recall(key)
+            if (last !== undefined) {
+              markUsingCache(true)
+              return last
+            }
+          }
+          throw e
+        }
+      }
+    }
+  }
 
   private createdBy(): string {
     if (!this.userId) throw new InvariantError('Not signed in — please sign in again before recording.')

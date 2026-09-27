@@ -3,6 +3,7 @@ import type { Session } from '@supabase/supabase-js'
 import { FileSpreadsheet, LogOut, Menu } from 'lucide-react'
 import { supabase } from './lib/supabase'
 import { engine } from './lib/engine'
+import { clearOfflineCache, markUsingCache, recall, remember, setCacheOwner, useOffline } from './lib/offline'
 import Login from './components/Login'
 import { Spinner } from './components/ui'
 import Sidebar from './components/Sidebar'
@@ -21,8 +22,11 @@ import Debtors from './components/Debtors'
 
 type AppUser = { id: string; name: string; role: string }
 
-function signOut() {
-  void supabase.auth.signOut()
+async function signOut() {
+  clearOfflineCache() // remembered books never outlive the login
+  engine.userId = null
+  const { error } = await supabase.auth.signOut()
+  if (error) await supabase.auth.signOut({ scope: 'local' }) // no signal: still sign out on this phone
 }
 
 /** Gate: login screen until signed in; only accounts linked in app.users get the ledger. */
@@ -32,7 +36,10 @@ function App() {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session))
-    const { data } = supabase.auth.onAuthStateChange((_event, s) => setSession(s))
+    const { data } = supabase.auth.onAuthStateChange((_event, s) => {
+      if (!s) clearOfflineCache()
+      setSession(s)
+    })
     return () => data.subscription.unsubscribe()
   }, [])
 
@@ -40,11 +47,23 @@ function App() {
   useEffect(() => {
     if (!authUserId) {
       engine.userId = null
+      setCacheOwner(null)
       setUser(undefined)
       return
     }
+    setCacheOwner(authUserId)
     supabase.rpc('current_app_user').then(({ data, error }) => {
-      const u = error ? null : ((data as AppUser | null) ?? null)
+      let u: AppUser | null
+      if (!error) {
+        u = (data as AppUser | null) ?? null
+        if (u) remember('app-user', u)
+      } else if (!/^(PGRST\d+|[0-9A-Z]{5})$/.test(error.code ?? '')) {
+        // no signal: open read-only with the account this login had last time (if any)
+        u = recall<AppUser>('app-user') ?? null
+        if (u) markUsingCache(true)
+      } else {
+        u = null
+      }
       engine.userId = u?.id ?? null
       setUser(u)
     })
@@ -69,6 +88,7 @@ function App() {
 }
 
 function Ledger({ userName }: { userName: string }) {
+  const offline = useOffline()
   const [activeTab, setActiveTab] = useState('dashboard')
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [dataVersion, setDataVersion] = useState(0)
@@ -124,6 +144,12 @@ function Ledger({ userName }: { userName: string }) {
             </button>
           </div>
         </div>
+
+        {offline && (
+          <div role="alert" className="shrink-0 bg-amber-100 px-4 py-2.5 text-center text-base font-bold text-amber-900">
+            Offline — entries need signal. Showing the last loaded figures.
+          </div>
+        )}
 
         <div className="flex-1 overflow-auto p-4 md:p-8">
           {activeTab === 'dashboard' && <Dashboard key={dataVersion} go={go} />}

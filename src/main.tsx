@@ -50,6 +50,15 @@ Sentry.withErrorBoundary(App, {
   showDialog: false,
 })
 
+// Installed-app support: opens without signal. Production only, so development never serves stale files.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {
+      // app still works online without it
+    })
+  })
+}
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <App />
