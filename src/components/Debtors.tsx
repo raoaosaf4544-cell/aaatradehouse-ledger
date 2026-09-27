@@ -33,6 +33,7 @@ export default function Debtors({ onPosted }: { onPosted: () => void }) {
   const [error, setError] = useState<unknown>(null)
   const [expanded, setExpanded] = useState<string | null>(null)
   const [payFor, setPayFor] = useState<string | null>(null)
+  const [payOwed, setPayOwed] = useState(0) // shown as a hint only; the amount starts empty
   const [payAmount, setPayAmount] = useState('')
   const [payDate, setPayDate] = useState(todayPK)
   const [payNote, setPayNote] = useState('')
@@ -132,7 +133,7 @@ export default function Debtors({ onPosted }: { onPosted: () => void }) {
             <fieldset disabled={paySafe.locked} className="space-y-4">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <DateField label="Date received" value={payDate} onChange={setPayDate} />
-              <Field label="Amount (PKR)">
+              <Field label="Amount received (PKR)" hint={`Balance owed: PKR ${(payOwed / 100).toLocaleString('en-PK', { maximumFractionDigits: 2 })}`}>
                 <input type="number" min="1" step="0.01" inputMode="decimal" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} className={inputCls} required />
               </Field>
             </div>
@@ -189,7 +190,8 @@ export default function Debtors({ onPosted }: { onPosted: () => void }) {
                           disabled={paySafe.locked}
                           onClick={() => {
                             setPayFor(d.customer_name)
-                            setPayAmount(String(d.outstanding_paisa / 100))
+                            setPayOwed(d.outstanding_paisa)
+                            setPayAmount('')
                           }}
                           className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-emerald-50 px-3 text-sm font-bold text-emerald-700 hover:bg-emerald-100"
                         >
