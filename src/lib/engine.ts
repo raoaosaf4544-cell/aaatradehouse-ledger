@@ -38,10 +38,13 @@ export class InvariantError extends Error {
    * false = no clear answer (no signal, timeout): the save MAY have reached the server.
    */
   definite: boolean
-  constructor(message: string, definite = true) {
+  /** true = the message is the database's own text: never shown as-is (see lib/friendly.ts). */
+  fromServer: boolean
+  constructor(message: string, definite = true, fromServer = false) {
     super(message)
     this.name = 'InvariantError'
     this.definite = definite
+    this.fromServer = fromServer
   }
 }
 
@@ -54,7 +57,7 @@ export const SAVE_TIMEOUT_MS = 20_000
 /** Postgres/PostgREST error codes mean the server answered; anything else is a network problem. */
 function rpcError(error: { message: string; code?: string | null }): InvariantError {
   const answered = /^(PGRST\d+|[0-9A-Z]{5})$/.test(error.code ?? '')
-  return new InvariantError(error.message, answered)
+  return new InvariantError(error.message, answered, answered)
 }
 
 /** Write RPCs give up after SAVE_TIMEOUT_MS so the form can offer Retry with the same key. */

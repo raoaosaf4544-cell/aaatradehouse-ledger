@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { paisaToPkr, gramsToKg } from '../lib/types'
-import { InvariantError, PAGE_SIZE } from '../lib/engine'
+import { PAGE_SIZE } from '../lib/engine'
+import { friendlyMessage, type ErrorKind } from '../lib/friendly'
 
 export function Money({ paisa, className = '' }: { paisa: number; className?: string }) {
   const negative = paisa < 0
@@ -64,21 +65,16 @@ export function SectionTitle({ children }: { children: React.ReactNode }) {
   )
 }
 
-export function ErrorBanner({ error, onDismiss }: { error: unknown; onDismiss?: () => void }) {
-  const message =
-    error instanceof InvariantError
-      ? error.message
-      : error instanceof Error
-        ? error.message
-        : String(error)
+/** Plain-language error box. Raw database text is never shown (lib/friendly.ts). */
+export function ErrorBanner({ error, onDismiss, kind = 'load' }: { error: unknown; onDismiss?: () => void; kind?: ErrorKind }) {
+  const message = friendlyMessage(error, kind)
+  const title = typeof error === 'string' ? 'Check this' : kind === 'save' ? 'Not saved' : 'Could not load'
   return (
     <div className="mb-4 flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4">
       <div className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-rose-500" />
       <div className="min-w-0 flex-1">
-        <div className="text-sm font-semibold text-rose-800">
-          {error instanceof InvariantError ? 'Blocked by data-integrity rule' : 'Something went wrong'}
-        </div>
-        <div className="mt-1 break-words text-sm text-rose-700">{message}</div>
+        <div className="text-base font-bold text-rose-800">{title}</div>
+        <div className="mt-1 break-words text-base text-rose-800">{message}</div>
       </div>
       {onDismiss && (
         <button

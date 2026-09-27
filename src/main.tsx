@@ -22,12 +22,12 @@ Sentry.init({
 
 // Global error boundary: a crash must never take the ledger UI down silently.
 Sentry.withErrorBoundary(App, {
-  fallback: ({ error, resetError }) => (
+  fallback: ({ resetError }) => (
     <div style={{ fontFamily: 'system-ui', padding: 40, maxWidth: 640, margin: '10vh auto' }}>
-      <h1 style={{ fontSize: 20, fontWeight: 700 }}>Something went wrong</h1>
-      <p style={{ color: '#555', fontSize: 14 }}>
-        The ledger hit an unexpected error. Your data is safe on the server — nothing you entered
-        has been lost.
+      <h1 style={{ fontSize: 22, fontWeight: 700 }}>Something went wrong on this screen</h1>
+      <p style={{ color: '#333', fontSize: 16 }}>
+        Your saved entries are safe on the server. Anything not saved yet may need typing again.
+        Tap Try again.
       </p>
       {dsn ? (
         <p style={{ color: '#888', fontSize: 12 }}>
@@ -36,12 +36,9 @@ Sentry.withErrorBoundary(App, {
       ) : (
         <p style={{ color: '#888', fontSize: 12 }}>Error reporting is not configured (no Sentry DSN).</p>
       )}
-      <pre style={{ background: '#f4f4f5', padding: 12, borderRadius: 8, fontSize: 12, overflow: 'auto' }}>
-        {String(error)}
-      </pre>
       <button
         onClick={resetError}
-        style={{ marginTop: 12, padding: '8px 16px', borderRadius: 8, border: '1px solid #ccc', cursor: 'pointer' }}
+        style={{ marginTop: 12, minHeight: 48, padding: '12px 20px', borderRadius: 10, border: '2px solid #94a3b8', fontSize: 16, fontWeight: 600, cursor: 'pointer' }}
       >
         Try again
       </button>

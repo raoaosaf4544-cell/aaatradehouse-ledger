@@ -141,7 +141,7 @@ export function SaveControls({
 }) {
   return (
     <div className="space-y-3">
-      {safe.error != null && <ErrorBanner error={safe.error} />}
+      {safe.error != null && <ErrorBanner error={safe.error} kind="save" />}
       <SavedBanner safe={safe} />
       {safe.phase === 'already' ? (
         <button
@@ -154,7 +154,7 @@ export function SaveControls({
       ) : safe.phase === 'failed' ? (
         <>
           <div role="alert" className="rounded-xl border-2 border-rose-300 bg-rose-50 p-4 text-lg font-bold text-rose-800">
-            Not saved — check signal and tap Retry
+            No signal — not confirmed. Tap Retry: it never saves twice.
           </div>
           {safe.startOverOffline && (
             <div role="alert" className="rounded-xl border-2 border-amber-300 bg-amber-50 p-4 text-base font-semibold text-amber-900">

@@ -19,7 +19,7 @@ export default function Login() {
     if (!error) return
     if (error.message === 'Invalid login credentials') setError('Wrong email or password.')
     else if (!navigator.onLine || /fetch|network/i.test(error.message)) setError('No signal — signing in needs signal.')
-    else setError(error.message)
+    else setError('Could not sign in. Check signal and try again.')
   }
 
   return (

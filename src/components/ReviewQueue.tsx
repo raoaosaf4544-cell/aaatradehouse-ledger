@@ -34,7 +34,7 @@ export default function ReviewQueue() {
 
   return (
     <div className="space-y-4">
-      {error && <ErrorBanner error={error} />}
+      {error != null && <ErrorBanner error={error} kind={items ? 'save' : 'load'} />}
       <Card>
         <SectionTitle>
           Unclear lines imported from your Excel ledger — nothing was auto-classified
