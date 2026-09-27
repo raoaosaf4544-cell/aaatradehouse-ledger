@@ -1,15 +1,7 @@
 import { useState } from 'react'
 import { engine } from '../lib/engine'
-import {
-  Card,
-  Field,
-  inputCls,
-  ErrorBanner,
-  JournalPreview,
-  SectionTitle,
-  SuccessBanner,
-  accountName,
-} from './ui'
+import { Card, Field, inputCls, JournalPreview, SectionTitle, accountName } from './ui'
+import { SaveControls, useSafeSave } from './SafeSave'
 
 /**
  * Capital Injection: Dr Cash 1000 / Cr Owner Capital 3000.
@@ -20,9 +12,7 @@ export default function CapitalInjectionForm({ onPosted }: { onPosted: () => voi
   const [amount, setAmount] = useState('')
   const [depositor, setDepositor] = useState('')
   const [note, setNote] = useState('')
-  const [error, setError] = useState<unknown>(null)
-  const [success, setSuccess] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
+  const safe = useSafeSave()
 
   const amountPaisa = (() => {
     const n = Number(amount)
@@ -35,36 +25,35 @@ export default function CapitalInjectionForm({ onPosted }: { onPosted: () => voi
     { account: '3000', credit: amountPaisa },
   ]
 
+  function clear() {
+    setAmount('')
+    setNote('')
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault()
-    setError(null)
-    setSuccess(null)
     if (!valid) return
-    setBusy(true)
-    try {
-      const ref = await engine.postEvent({
+    const ref = await safe.save((key) =>
+      engine.postEvent({
         eventType: 'capital_injection',
         occurredOn: date,
         description: `Capital injection by ${depositor.trim()}${note.trim() ? ` — ${note.trim()}` : ''}`,
         lines,
         partyType: 'owner',
         partyName: depositor.trim(),
-      })
-      setSuccess(`Recorded as ${ref}. Cash and capital both increased immediately.`)
-      setAmount('')
-      setNote('')
-      onPosted()
-    } catch (err) {
-      setError(err)
-    } finally {
-      setBusy(false)
-    }
+        idempotencyKey: key,
+      }),
+    )
+    if (ref === null) return
+    clear()
+    onPosted()
   }
 
   return (
     <Card>
       <SectionTitle>Add investment money</SectionTitle>
       <form onSubmit={submit} className="space-y-5">
+        <fieldset disabled={safe.locked} className="space-y-5">
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
           <Field label="Date">
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} required />
@@ -108,16 +97,9 @@ export default function CapitalInjectionForm({ onPosted }: { onPosted: () => voi
           }))}
         />
 
-        {error && <ErrorBanner error={error} />}
-        {success && <SuccessBanner>{success}</SuccessBanner>}
+        </fieldset>
 
-        <button
-          type="submit"
-          disabled={!valid || busy}
-          className="w-full rounded-xl bg-emerald-600 px-4 py-3.5 text-lg font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-        >
-          {busy ? 'Recording…' : 'Record it'}
-        </button>
+        <SaveControls safe={safe} valid={valid} label="Record it" onStartOver={clear} />
       </form>
     </Card>
   )

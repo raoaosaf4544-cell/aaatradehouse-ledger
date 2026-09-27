@@ -4,11 +4,11 @@ import { engine } from '../lib/engine'
 import type { AccountLineRow, EventRow } from '../lib/types'
 import { Badge, Card, EmptyState, ErrorBanner, Money, SectionTitle, Spinner } from './ui'
 import MoneyOutForm from './MoneyOutForm'
+import { SaveControls, useSafeSave } from './SafeSave'
 
 export default function CashLedger() {
   const [events, setEvents] = useState<EventRow[] | null>(null)
   const [error, setError] = useState<unknown>(null)
-  const [inError, setInError] = useState<unknown>(null)
   const [suspenseLines, setSuspenseLines] = useState<AccountLineRow[] | null>(null)
   const [suspenseOpen, setSuspenseOpen] = useState(false)
 
@@ -35,7 +35,7 @@ export default function CashLedger() {
     <div className="space-y-6">
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <MoneyOutForm onPosted={load} />
-        <MoneyInCard onPosted={load} onError={setInError} />
+        <MoneyInCard onPosted={load} />
       </div>
 
       {error && <ErrorBanner error={error} />}
@@ -143,20 +143,13 @@ export default function CashLedger() {
   )
 }
 
-function MoneyInCard({
-  onPosted,
-  onError,
-}: {
-  onPosted: () => void
-  onError: (e: unknown) => void
-}) {
+function MoneyInCard({ onPosted }: { onPosted: () => void }) {
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [amount, setAmount] = useState('')
   const [description, setDescription] = useState('')
   const [toSuspense, setToSuspense] = useState(false)
   const [suspenseNote, setSuspenseNote] = useState('')
-  const [success, setSuccess] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
+  const safe = useSafeSave()
 
   const amountPaisa = (() => {
     const n = Number(amount)
@@ -165,13 +158,17 @@ function MoneyInCard({
   // Suspense must never again fill up with unexplained lines: a note is required when ticked.
   const valid = amountPaisa > 0 && description.trim().length > 0 && (!toSuspense || suspenseNote.trim().length > 0)
 
+  function clear() {
+    setAmount('')
+    setDescription('')
+    setSuspenseNote('')
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     if (!valid) return
-    setBusy(true)
-    setSuccess(null)
-    try {
-      const ref = await engine.postEvent({
+    const ref = await safe.save((key) =>
+      engine.postEvent({
         eventType: 'other',
         occurredOn: date,
         description: toSuspense ? `${description.trim()} — for: ${suspenseNote.trim()}` : description.trim(),
@@ -185,29 +182,19 @@ function MoneyInCard({
               { account: '4900', credit: amountPaisa },
             ],
         partyType: 'other',
-      })
-      setSuccess(`Recorded as ${ref}.`)
-      setAmount('')
-      setDescription('')
-      setSuspenseNote('')
-      onPosted()
-    } catch (err) {
-      onError(err)
-    } finally {
-      setBusy(false)
-    }
+        idempotencyKey: key,
+      }),
+    )
+    if (ref === null) return
+    clear()
+    onPosted()
   }
 
   return (
     <Card>
       <SectionTitle>Record money in</SectionTitle>
-      <form
-        onSubmit={(e) => {
-          onError(null)
-          submit(e).catch(() => {})
-        }}
-        className="space-y-4"
-      >
+      <form onSubmit={submit} className="space-y-4">
+        <fieldset disabled={safe.locked} className="space-y-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <label className="block text-sm">
             <span className="mb-1 block font-medium text-slate-700">Date</span>
@@ -289,19 +276,9 @@ function MoneyInCard({
           </div>
         </div>
 
-        {success && (
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
-            {success}
-          </div>
-        )}
+        </fieldset>
 
-        <button
-          type="submit"
-          disabled={!valid || busy}
-          className="min-h-11 w-full rounded-lg bg-emerald-600 px-4 py-3 text-base font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-        >
-          {busy ? 'Posting…' : 'Record it'}
-        </button>
+        <SaveControls safe={safe} valid={valid} label="Record it" onStartOver={clear} />
       </form>
     </Card>
   )

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { engine } from '../lib/engine'
 import type { BatchRow, Product } from '../lib/types'
+import { SaveControls, useSafeSave } from './SafeSave'
 import {
   Badge,
   Card,
@@ -10,7 +11,6 @@ import {
   inputCls,
   JournalPreview,
   SectionTitle,
-  SuccessBanner,
   accountName,
 } from './ui'
 
@@ -37,9 +37,8 @@ export default function CrushRunForm({ onPosted }: { onPosted: () => void }) {
   const [conversionPkr, setConversionPkr] = useState('')
   const [payCash, setPayCash] = useState(true)
   const [note, setNote] = useState('')
-  const [error, setError] = useState<unknown>(null)
-  const [success, setSuccess] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
+  const safe = useSafeSave()
+  const [loadError, setLoadError] = useState<unknown>(null)
 
   useEffect(() => {
     Promise.all([engine.batches(), engine.products()])
@@ -49,7 +48,7 @@ export default function CrushRunForm({ onPosted }: { onPosted: () => void }) {
         const gradeable = p.filter((x) => x.form === 'bulk_processed' || x.form === 'packaged')
         setGrades((g) => (g[0].productCode ? g : [{ ...g[0], productCode: gradeable[0]?.code ?? '' }]))
       })
-      .catch(setError)
+      .catch(setLoadError)
   }, [])
 
   const gradeProducts = useMemo(
@@ -120,14 +119,19 @@ export default function CrushRunForm({ onPosted }: { onPosted: () => void }) {
     gradeRows.every((g) => g.qtyG > 0 && !!g.productCode) &&
     new Set(gradeRows.map((g) => g.productCode)).size === gradeRows.length
 
+  function clear() {
+    setInputKg('')
+    setWastageKg('')
+    setConversionPkr('')
+    setGrades([{ key: (rowKey += 1), productCode: gradeProducts[0]?.code ?? '', qtyKg: '' }])
+    setNote('')
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault()
-    setError(null)
-    setSuccess(null)
     if (!valid) return
-    setBusy(true)
-    try {
-      const res = await engine.recordProcessRun({
+    const res = await safe.save((key) =>
+      engine.recordProcessRun({
         inputBatchCode: inputBatch,
         inputQtyKg: Number(inputKg),
         outputs: gradeRows.map((g) => ({
@@ -140,30 +144,20 @@ export default function CrushRunForm({ onPosted }: { onPosted: () => void }) {
         payCash,
         occurredOn: date,
         note: note.trim() || undefined,
-      })
-      const created = res.outputs
-        .map((o) => `${o.batch_code}: ${(o.qty_grams / 1000).toLocaleString()} kg @ PKR ${(o.value_paisa / 100).toLocaleString()}`)
-        .join(' · ')
-      setSuccess(
-        `Recorded as ${res.event_ref}. New batch(es): ${created}. Wastage PKR ${(res.wastage_value_paisa / 100).toLocaleString()} booked to process loss.`,
-      )
-      setInputKg('')
-      setWastageKg('')
-      setConversionPkr('')
-      setGrades([{ key: (rowKey += 1), productCode: gradeProducts[0]?.code ?? '', qtyKg: '' }])
-      setNote('')
-      onPosted()
-    } catch (err) {
-      setError(err)
-    } finally {
-      setBusy(false)
-    }
+        idempotencyKey: key,
+      }),
+    )
+    if (res === null) return
+    clear()
+    onPosted()
   }
 
   return (
     <Card>
       <SectionTitle>Crush salt — raw in, graded out</SectionTitle>
       <form onSubmit={submit} className="space-y-5">
+        {loadError != null && <ErrorBanner error={loadError} />}
+        <fieldset disabled={safe.locked} className="space-y-5">
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
           <Field label="Date">
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} required />
@@ -335,16 +329,9 @@ export default function CrushRunForm({ onPosted }: { onPosted: () => void }) {
           </>
         )}
 
-        {error && <ErrorBanner error={error} />}
-        {success && <SuccessBanner>{success}</SuccessBanner>}
+        </fieldset>
 
-        <button
-          type="submit"
-          disabled={!valid || busy}
-          className="w-full rounded-xl bg-amber-600 px-4 py-3.5 text-lg font-bold text-white shadow-sm transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-        >
-          {busy ? 'Recording…' : 'Record crush run'}
-        </button>
+        <SaveControls safe={safe} valid={valid} label="Record crush run" onStartOver={clear} className="bg-amber-600 hover:bg-amber-700" />
       </form>
     </Card>
   )

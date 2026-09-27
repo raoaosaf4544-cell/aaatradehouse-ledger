@@ -33,11 +33,34 @@ import type {
  */
 
 export class InvariantError extends Error {
-  constructor(message: string) {
+  /**
+   * true  = the database (or the form's own check) clearly said NO: nothing was saved.
+   * false = no clear answer (no signal, timeout): the save MAY have reached the server.
+   */
+  definite: boolean
+  constructor(message: string, definite = true) {
     super(message)
     this.name = 'InvariantError'
+    this.definite = definite
   }
 }
+
+/** A save with no reply for this long is treated as "not saved — retry". */
+export const SAVE_TIMEOUT_MS = 20_000
+
+/** Postgres/PostgREST error codes mean the server answered; anything else is a network problem. */
+function rpcError(error: { message: string; code?: string | null }): InvariantError {
+  const answered = /^(PGRST\d+|[0-9A-Z]{5})$/.test(error.code ?? '')
+  return new InvariantError(error.message, answered)
+}
+
+/** Write RPCs give up after SAVE_TIMEOUT_MS so the form can offer Retry with the same key. */
+function saveRpc(fn: string, args: Record<string, unknown>) {
+  return supabase.rpc(fn, args).abortSignal(AbortSignal.timeout(SAVE_TIMEOUT_MS))
+}
+
+/** What the database confirms for an entry saved under an idempotency key. */
+export type ConfirmedEntry = { event_ref: string; occurred_on: string; total_paisa: number }
 
 type AccountRow = { id: number; code: string; name: string }
 
@@ -58,7 +81,7 @@ export class LedgerEngine {
       .order('occurred_on', { ascending: false })
       .order('event_ref', { ascending: true })
       .limit(limit)
-    if (error) throw new InvariantError(error.message)
+    if (error) throw rpcError(error)
     return data as EventRow[]
   }
 
@@ -68,7 +91,7 @@ export class LedgerEngine {
       .from('v_account_balances')
       .select('*')
       .order('code', { ascending: true })
-    if (error) throw new InvariantError(error.message)
+    if (error) throw rpcError(error)
     return data as AccountBalance[]
   }
 
@@ -78,7 +101,7 @@ export class LedgerEngine {
       .from('v_stock_onhand')
       .select('*')
       .order('batch_code', { ascending: true })
-    if (error) throw new InvariantError(error.message)
+    if (error) throw rpcError(error)
     return data as StockOnHand[]
   }
 
@@ -88,7 +111,7 @@ export class LedgerEngine {
       .from('v_batches')
       .select('*')
       .order('opened_on', { ascending: false })
-    if (error) throw new InvariantError(error.message)
+    if (error) throw rpcError(error)
     return data as BatchRow[]
   }
 
@@ -99,7 +122,7 @@ export class LedgerEngine {
       .select('*')
       .eq('is_active', true)
       .order('code', { ascending: true })
-    if (error) throw new InvariantError(error.message)
+    if (error) throw rpcError(error)
     return data as Product[]
   }
 
@@ -110,7 +133,7 @@ export class LedgerEngine {
       .select('*')
       .eq('is_active', true)
       .order('name', { ascending: true })
-    if (error) throw new InvariantError(error.message)
+    if (error) throw rpcError(error)
     return data as Location[]
   }
 
@@ -122,7 +145,7 @@ export class LedgerEngine {
       .eq('status', 'open')
       .order('id', { ascending: true })
       .limit(200)
-    if (error) throw new InvariantError(error.message)
+    if (error) throw rpcError(error)
     return data as ReviewItem[]
   }
 
@@ -139,7 +162,7 @@ export class LedgerEngine {
       .select('id, event_id, entry_seq, debit_paisa, credit_paisa, account_code, account_name')
       .in('event_id', eventIds)
       .order('entry_seq', { ascending: true })
-    if (error) throw new InvariantError(error.message)
+    if (error) throw rpcError(error)
 
     for (const l of (data ?? []) as LedgerEntryRow[]) {
       const list = result.get(l.event_id) ?? []
@@ -161,7 +184,7 @@ export class LedgerEngine {
       .eq('account_code', accountCode)
       .order('event_id', { ascending: true })
       .order('entry_seq', { ascending: true })
-    if (error) throw new InvariantError(error.message)
+    if (error) throw rpcError(error)
 
     const eventIds = [...new Set((lines ?? []).map((l: any) => l.event_id as number))]
     const eventsById = new Map<number, { occurred_on: string; event_ref: string; description: string }>()
@@ -195,7 +218,7 @@ export class LedgerEngine {
     if (!input.description.trim()) {
       throw new InvariantError('A description is required — every event must be explainable.')
     }
-    const { data, error } = await supabase.rpc('post_event', {
+    const { data, error } = await saveRpc('post_event', {
       p_event_type: input.eventType,
       p_occurred_on: input.occurredOn,
       p_description: input.description,
@@ -203,8 +226,9 @@ export class LedgerEngine {
       p_party_type: input.partyType ?? null,
       p_party_name: input.partyName ?? null,
       p_created_by: this.createdBy(),
+      p_idempotency_key: input.idempotencyKey,
     })
-    if (error) throw new InvariantError(error.message)
+    if (error) throw rpcError(error)
     return data as string
   }
 
@@ -213,6 +237,8 @@ export class LedgerEngine {
    * movement and posts Dr Inventory / Cr Cash-or-AP through the guarded RPC.
    */
   async recordPurchase(input: {
+    /** One key per entry attempt; reused on every retry of that same entry. */
+    idempotencyKey: string
     supplier: string
     productCode: string
     locationCode: string
@@ -225,7 +251,7 @@ export class LedgerEngine {
     if (!input.supplier.trim()) throw new InvariantError('Supplier name is required.')
     if (!(input.qtyKg > 0)) throw new InvariantError('Quantity must be positive.')
     if (!(input.landedCostPkr > 0)) throw new InvariantError('Landed cost must be positive.')
-    const { data, error } = await supabase.rpc('record_purchase', {
+    const { data, error } = await saveRpc('record_purchase', {
       p_supplier: input.supplier.trim(),
       p_product_code: input.productCode,
       p_location_code: input.locationCode,
@@ -235,8 +261,9 @@ export class LedgerEngine {
       p_occurred_on: input.occurredOn,
       p_note: input.note?.trim() || null,
       p_created_by: this.createdBy(),
+      p_idempotency_key: input.idempotencyKey,
     })
-    if (error) throw new InvariantError(error.message)
+    if (error) throw rpcError(error)
     return data as PurchaseResult
   }
 
@@ -247,6 +274,8 @@ export class LedgerEngine {
    * conservation; any violation aborts the whole run atomically.
    */
   async recordProcessRun(input: {
+    /** One key per entry attempt; reused on every retry of that same entry. */
+    idempotencyKey: string
     inputBatchCode: string
     inputQtyKg: number
     outputs: GradeOutput[]
@@ -259,7 +288,7 @@ export class LedgerEngine {
     if (!(input.inputQtyKg > 0)) throw new InvariantError('Input quantity must be positive.')
     if (input.outputs.length === 0) throw new InvariantError('At least one output grade is required.')
     if (!(input.wastageKg >= 0)) throw new InvariantError('Wastage cannot be negative.')
-    const { data, error } = await supabase.rpc('record_process_run', {
+    const { data, error } = await saveRpc('record_process_run', {
       p_input_batch_code: input.inputBatchCode,
       p_input_qty_grams: Math.round(input.inputQtyKg * 1000),
       p_outputs: input.outputs.map((o) => ({
@@ -273,8 +302,9 @@ export class LedgerEngine {
       p_occurred_on: input.occurredOn,
       p_note: input.note?.trim() || null,
       p_created_by: this.createdBy(),
+      p_idempotency_key: input.idempotencyKey,
     })
-    if (error) throw new InvariantError(error.message)
+    if (error) throw rpcError(error)
     return data as ProcessRunResult
   }
 
@@ -287,7 +317,7 @@ export class LedgerEngine {
       .select('party_id, party_ref, name, phone')
       .eq('is_active', true)
       .order('name', { ascending: true })
-    if (error) throw new InvariantError(error.message)
+    if (error) throw rpcError(error)
     return (data ?? []).map((c: any) => ({ id: c.party_id, party_ref: c.party_ref, name: c.name, phone: c.phone, kind: 'customer' }))
   }
 
@@ -299,7 +329,7 @@ export class LedgerEngine {
       p_phone: phone?.trim() || null,
       p_note: null,
     })
-    if (error) throw new InvariantError(error.message)
+    if (error) throw rpcError(error)
     const created = (Array.isArray(data) ? data[0] : data) as Customer
     if (!created?.id) throw new InvariantError('Customer could not be created.')
     return created
@@ -312,7 +342,7 @@ export class LedgerEngine {
       .select('advance_balance_paisa')
       .eq('party_id', partyId)
       .maybeSingle()
-    if (error) throw new InvariantError(error.message)
+    if (error) throw rpcError(error)
     return data?.advance_balance_paisa ?? 0
   }
 
@@ -323,7 +353,7 @@ export class LedgerEngine {
       .select('*')
       .order('occurred_on', { ascending: false })
       .limit(limit)
-    if (error) throw new InvariantError(error.message)
+    if (error) throw rpcError(error)
     return data as SaleRow[]
   }
 
@@ -334,7 +364,7 @@ export class LedgerEngine {
       .select('*')
       .order('occurred_on', { ascending: false })
       .limit(limit)
-    if (error) throw new InvariantError(error.message)
+    if (error) throw rpcError(error)
     return data as DispatchAllocationRow[]
   }
 
@@ -344,7 +374,7 @@ export class LedgerEngine {
       .from('v_debtors')
       .select('*')
       .order('outstanding_paisa', { ascending: false })
-    if (error) throw new InvariantError(error.message)
+    if (error) throw rpcError(error)
     return data as DebtorRow[]
   }
 
@@ -362,7 +392,7 @@ export class LedgerEngine {
       .eq('status', 'open')
       .gt('onhand_grams', 0)
       .order('opened_on', { ascending: true })
-    if (error) throw new InvariantError(error.message)
+    if (error) throw rpcError(error)
     return ((data ?? []) as { id: number; batch_code: string; opened_on: string; onhand_grams: number; value_paisa: number }[]).map(
       (b) => ({
         batch_id: b.id,
@@ -379,6 +409,8 @@ export class LedgerEngine {
    * per-kg pricing, advance application, cash/AR split — happens in the DB.
    */
   async recordSale(input: {
+    /** One key per entry attempt; reused on every retry of that same entry. */
+    idempotencyKey: string
     customerName: string
     items: { productCode: string; qtyKg: number; unitPricePkrPerKg: number }[]
     cashReceivedPkr: number
@@ -389,7 +421,7 @@ export class LedgerEngine {
     if (!input.customerName.trim()) throw new InvariantError('Customer name is required.')
     if (input.items.length === 0) throw new InvariantError('At least one sale line is required.')
     if (!(input.cashReceivedPkr >= 0)) throw new InvariantError('Cash received cannot be negative.')
-    const { data, error } = await supabase.rpc('record_sale', {
+    const { data, error } = await saveRpc('record_sale', {
       p_party: input.customerName.trim(),
       p_items: input.items.map((it) => ({
         product_code: it.productCode,
@@ -400,10 +432,10 @@ export class LedgerEngine {
       p_customer_phone: input.customerPhone?.trim() || null,
       p_occurred_on: input.occurredOn,
       p_note: input.note?.trim() || null,
-      p_idempotency_key: null,
+      p_idempotency_key: input.idempotencyKey,
       p_created_by: this.createdBy(),
     })
-    if (error) throw new InvariantError(error.message)
+    if (error) throw rpcError(error)
     return data as SaleResult
   }
 
@@ -412,13 +444,15 @@ export class LedgerEngine {
    * per-batch FOR UPDATE locks, exact book-value COGS, batch auto-close.
    */
   async recordDispatch(input: {
+    /** One key per entry attempt; reused on every retry of that same entry. */
+    idempotencyKey: string
     saleRef: string
     lines: DispatchLineInput[]
     occurredOn: string
     note?: string
   }): Promise<DispatchResult> {
     if (input.lines.length === 0) throw new InvariantError('At least one dispatch line is required.')
-    const { data, error } = await supabase.rpc('record_dispatch', {
+    const { data, error } = await saveRpc('record_dispatch', {
       p_sale_ref: input.saleRef,
       p_lines: input.lines.map((l) => ({
         product_code: l.productCode,
@@ -436,10 +470,10 @@ export class LedgerEngine {
       })),
       p_occurred_on: input.occurredOn,
       p_note: input.note?.trim() || null,
-      p_idempotency_key: null,
+      p_idempotency_key: input.idempotencyKey,
       p_created_by: this.createdBy(),
     })
-    if (error) throw new InvariantError(error.message)
+    if (error) throw rpcError(error)
     return data as DispatchResult
   }
 
@@ -449,6 +483,8 @@ export class LedgerEngine {
    * per line — the DB books the exact total when lineTotalPkr is given.
    */
   async recordUdhaarSale(input: {
+    /** One key per entry attempt; reused on every retry of that same entry. */
+    idempotencyKey: string
     customerName: string
     items: { productCode: string; qtyKg: number; unitPricePkrPerKg?: number; lineTotalPkr?: number }[]
     cashReceivedPkr: number
@@ -459,7 +495,7 @@ export class LedgerEngine {
     if (!input.customerName.trim()) throw new InvariantError('Customer name is required.')
     if (input.items.length === 0) throw new InvariantError('At least one sale line is required.')
     if (!(input.cashReceivedPkr >= 0)) throw new InvariantError('Cash received cannot be negative.')
-    const { data, error } = await supabase.rpc('record_udhaar_sale', {
+    const { data, error } = await saveRpc('record_udhaar_sale', {
       p_party: input.customerName.trim(),
       p_items: input.items.map((it) => {
         const qtyKg = Math.round(it.qtyKg * 1000) / 1000
@@ -475,15 +511,17 @@ export class LedgerEngine {
       p_customer_phone: input.customerPhone?.trim() || null,
       p_occurred_on: input.occurredOn,
       p_note: input.note?.trim() || null,
-      p_idempotency_key: null,
+      p_idempotency_key: input.idempotencyKey,
       p_created_by: this.createdBy(),
     })
-    if (error) throw new InvariantError(error.message)
+    if (error) throw rpcError(error)
     return data as { sale_ref: string; dispatch_ref: string; revenue_paisa: number; cash_paisa: number; ar_paisa: number; cogs_paisa: number; party_created: boolean } | { duplicate: boolean; sale_ref: string }
   }
 
   /** Record a customer payment (Dr Cash / Cr AR) through the guarded RPC. */
   async recordCustomerPayment(input: {
+    /** One key per entry attempt; reused on every retry of that same entry. */
+    idempotencyKey: string
     customerName: string
     amountPkr: number
     occurredOn: string
@@ -491,15 +529,15 @@ export class LedgerEngine {
   }): Promise<void> {
     if (!(input.amountPkr > 0)) throw new InvariantError('Payment amount must be positive.')
     if (!input.customerName.trim()) throw new InvariantError('Customer name is required.')
-    const { error } = await supabase.rpc('record_customer_payment', {
+    const { error } = await saveRpc('record_customer_payment', {
       p_customer: input.customerName.trim(),
       p_amount_paisa: Math.round(input.amountPkr * 100),
       p_occurred_on: input.occurredOn,
       p_note: input.note?.trim() || null,
       p_created_by: this.createdBy(),
-      p_idempotency_key: null,
+      p_idempotency_key: input.idempotencyKey,
     })
-    if (error) throw new InvariantError(error.message)
+    if (error) throw rpcError(error)
   }
 
   /**
@@ -515,7 +553,14 @@ export class LedgerEngine {
       p_note: note,
       p_dismissed: dismissed,
     })
-    if (error) throw new InvariantError(error.message)
+    if (error) throw rpcError(error)
+  }
+
+  /** The entry the database holds under this key (ref, date, posted amount), or null if none. */
+  async entryByKey(idempotencyKey: string): Promise<ConfirmedEntry | null> {
+    const { data, error } = await saveRpc('entry_by_key', { p_idempotency_key: idempotencyKey })
+    if (error) throw rpcError(error)
+    return (data as ConfirmedEntry | null) ?? null
   }
 }
 

@@ -17,6 +17,8 @@ export type PostEventInput = {
   lines: LedgerLine[]
   partyType?: string
   partyName?: string
+  /** One key per entry attempt; reused on every retry of that same entry. */
+  idempotencyKey: string
 }
 
 export type EventRow = {

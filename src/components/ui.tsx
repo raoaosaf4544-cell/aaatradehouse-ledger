@@ -132,14 +132,6 @@ export function Field({
 export const inputCls =
   'w-full rounded-xl border-2 border-slate-300 bg-white px-4 py-3 text-lg text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-100'
 
-export function SuccessBanner({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-base font-medium text-emerald-800">
-      {children}
-    </div>
-  )
-}
-
 export function Badge({
   children,
   tone = 'slate',

@@ -131,7 +131,7 @@ function Ledger({ userName }: { userName: string }) {
           {activeTab === 'salt' && <SaltInventory key={dataVersion} />}
           {activeTab === 'financials' && <Financials />}
           {activeTab === 'review' && <ReviewQueue />}
-          {activeTab === 'debtors' && <Debtors key={dataVersion} onPosted={onPosted} />}
+          {activeTab === 'debtors' && <Debtors onPosted={onPosted} />}
           {activeTab === 'record' && <Record go={go} />}
           {activeTab === 'record-capital' && <CapitalInjectionForm onPosted={onPosted} />}
           {activeTab === 'record-purchase' && <SaltPurchaseForm onPosted={onPosted} />}

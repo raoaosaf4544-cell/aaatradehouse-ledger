@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { engine } from '../lib/engine'
 import type { Location, Product } from '../lib/types'
+import { SaveControls, useSafeSave } from './SafeSave'
 import {
   Badge,
   Card,
@@ -9,7 +10,6 @@ import {
   inputCls,
   JournalPreview,
   SectionTitle,
-  SuccessBanner,
   accountName,
 } from './ui'
 
@@ -28,9 +28,8 @@ export default function SaltPurchaseForm({ onPosted }: { onPosted: () => void })
   const [costPkr, setCostPkr] = useState('')
   const [payCash, setPayCash] = useState(true)
   const [note, setNote] = useState('')
-  const [error, setError] = useState<unknown>(null)
-  const [success, setSuccess] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
+  const safe = useSafeSave()
+  const [loadError, setLoadError] = useState<unknown>(null)
 
   useEffect(() => {
     Promise.all([engine.products(), engine.locations()])
@@ -40,7 +39,7 @@ export default function SaltPurchaseForm({ onPosted }: { onPosted: () => void })
         setLocations(l)
         setLocationCode((prev) => prev || l.find((x) => x.kind === 'plant')?.code || l[0]?.code || '')
       })
-      .catch(setError)
+      .catch(setLoadError)
   }, [])
 
   const qty = Number(qtyKg)
@@ -67,14 +66,18 @@ export default function SaltPurchaseForm({ onPosted }: { onPosted: () => void })
     { account: payCash ? '1000' : '2000', credit: costOk ? Math.round(cost * 100) : 0 },
   ]
 
+  function clear() {
+    setSupplier('')
+    setQtyKg('')
+    setCostPkr('')
+    setNote('')
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault()
-    setError(null)
-    setSuccess(null)
     if (!valid) return
-    setBusy(true)
-    try {
-      const res = await engine.recordPurchase({
+    const res = await safe.save((key) =>
+      engine.recordPurchase({
         supplier: supplier.trim(),
         productCode,
         locationCode,
@@ -83,24 +86,20 @@ export default function SaltPurchaseForm({ onPosted }: { onPosted: () => void })
         payCash,
         occurredOn: date,
         note: note.trim() || undefined,
-      })
-      setSuccess(`Recorded as ${res.event_ref}. New batch ${res.batch_code} created with ${qty.toLocaleString()} kg.`)
-      setSupplier('')
-      setQtyKg('')
-      setCostPkr('')
-      setNote('')
-      onPosted()
-    } catch (err) {
-      setError(err)
-    } finally {
-      setBusy(false)
-    }
+        idempotencyKey: key,
+      }),
+    )
+    if (res === null) return
+    clear()
+    onPosted()
   }
 
   return (
     <Card>
       <SectionTitle>Buy inventory</SectionTitle>
       <form onSubmit={submit} className="space-y-5">
+        {loadError != null && <ErrorBanner error={loadError} />}
+        <fieldset disabled={safe.locked} className="space-y-5">
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
           <Field label="Date">
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} required />
@@ -211,16 +210,9 @@ export default function SaltPurchaseForm({ onPosted }: { onPosted: () => void })
           okLabel="The engine creates the new batch, records the movement, and verifies balance before saving."
         />
 
-        {error && <ErrorBanner error={error} />}
-        {success && <SuccessBanner>{success}</SuccessBanner>}
+        </fieldset>
 
-        <button
-          type="submit"
-          disabled={!valid || busy}
-          className="w-full rounded-xl bg-indigo-600 px-4 py-3.5 text-lg font-bold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-        >
-          {busy ? 'Recording…' : 'Record purchase'}
-        </button>
+        <SaveControls safe={safe} valid={valid} label="Record purchase" onStartOver={clear} className="bg-indigo-600 hover:bg-indigo-700" />
       </form>
     </Card>
   )

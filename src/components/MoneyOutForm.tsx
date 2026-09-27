@@ -1,15 +1,7 @@
 import { useState } from 'react'
 import { engine } from '../lib/engine'
-import {
-  Card,
-  ErrorBanner,
-  Field,
-  inputCls,
-  JournalPreview,
-  SectionTitle,
-  SuccessBanner,
-  accountName,
-} from './ui'
+import { Card, Field, inputCls, JournalPreview, SectionTitle, accountName } from './ui'
+import { SaveControls, useSafeSave } from './SafeSave'
 
 type Category = { id: string; label: string; account: string; eventType: string }
 
@@ -33,9 +25,7 @@ export default function MoneyOutForm({ onPosted }: { onPosted: () => void }) {
   const [categoryId, setCategoryId] = useState(CATEGORIES[0].id)
   const [amount, setAmount] = useState('')
   const [description, setDescription] = useState('')
-  const [error, setError] = useState<unknown>(null)
-  const [success, setSuccess] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
+  const safe = useSafeSave()
 
   const category = CATEGORIES.find((c) => c.id === categoryId) ?? CATEGORIES[0]
   const amountPaisa = (() => {
@@ -49,35 +39,34 @@ export default function MoneyOutForm({ onPosted }: { onPosted: () => void }) {
     { account: '1000', credit: amountPaisa },
   ]
 
+  function clear() {
+    setAmount('')
+    setDescription('')
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault()
-    setError(null)
-    setSuccess(null)
     if (!valid) return
-    setBusy(true)
-    try {
-      const ref = await engine.postEvent({
+    const ref = await safe.save((key) =>
+      engine.postEvent({
         eventType: category.eventType,
         occurredOn: date,
         description: description.trim(),
         lines,
         partyType: 'other',
-      })
-      setSuccess(`Recorded as ${ref}. The engine verified the books stay balanced.`)
-      setAmount('')
-      setDescription('')
-      onPosted()
-    } catch (err) {
-      setError(err)
-    } finally {
-      setBusy(false)
-    }
+        idempotencyKey: key,
+      }),
+    )
+    if (ref === null) return
+    clear()
+    onPosted()
   }
 
   return (
     <Card>
       <SectionTitle>Record money out</SectionTitle>
       <form onSubmit={submit} className="space-y-5">
+        <fieldset disabled={safe.locked} className="space-y-5">
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
           <Field label="Date">
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} required />
@@ -125,16 +114,9 @@ export default function MoneyOutForm({ onPosted }: { onPosted: () => void }) {
           }))}
         />
 
-        {error && <ErrorBanner error={error} />}
-        {success && <SuccessBanner>{success}</SuccessBanner>}
+        </fieldset>
 
-        <button
-          type="submit"
-          disabled={!valid || busy}
-          className="w-full rounded-xl bg-slate-900 px-4 py-3.5 text-lg font-bold text-white shadow-sm transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-        >
-          {busy ? 'Recording…' : 'Record it'}
-        </button>
+        <SaveControls safe={safe} valid={valid} label="Record it" onStartOver={clear} className="bg-slate-900 hover:bg-slate-700" />
       </form>
     </Card>
   )

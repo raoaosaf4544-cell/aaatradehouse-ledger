@@ -3,6 +3,7 @@ import { Truck, Users, Calculator } from 'lucide-react'
 import { engine } from '../lib/engine'
 import type { Customer, Product, FifoBatch, Location } from '../lib/types'
 import { gramsToKg } from '../lib/types'
+import { SaveControls, SavedBanner, useSafeSave } from './SafeSave'
 import {
   Badge,
   Card,
@@ -11,7 +12,6 @@ import {
   inputCls,
   JournalPreview,
   SectionTitle,
-  SuccessBanner,
   accountName,
 } from './ui'
 
@@ -51,9 +51,9 @@ export default function SellSaltForm({ onPosted }: { onPosted: () => void }) {
   const [cashPkr, setCashPkr] = useState('')
   const [note, setNote] = useState('')
   const [advancePaisa, setAdvancePaisa] = useState(0)
-  const [error, setError] = useState<unknown>(null)
-  const [success, setSuccess] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<unknown>(null) // loading errors only
+  const saleSafe = useSafeSave()
+  const dispatchSafe = useSafeSave()
   const [sellMode, setSellMode] = useState<'one' | 'two'>('one')
 
   // Dispatch state
@@ -66,7 +66,6 @@ export default function SellSaltForm({ onPosted }: { onPosted: () => void }) {
   const [overrideReason, setOverrideReason] = useState('')
   const [dispatchNote, setDispatchNote] = useState('')
   const [fifo, setFifo] = useState<FifoBatch[] | null>(null)
-  const [dispatchResult, setDispatchResult] = useState<string | null>(null)
   const [dispatchCount, setDispatchCount] = useState(0)
 
   useEffect(() => {
@@ -186,72 +185,67 @@ export default function SellSaltForm({ onPosted }: { onPosted: () => void }) {
   const fifoShort = mode === 'fifo' && fifo !== null && fifoAllocs.reduce((s, a) => s + a.qty_grams, 0) < Math.round(dispatchTotalKg * 1000)
   const singleLine = parsed.length === 1
 
+  function clearSale() {
+    setLines([{ productCode: '', qtyKg: '', unitPricePkr: '' }])
+    setCashPkr('')
+    setNote('')
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault()
-    setError(null)
-    setSuccess(null)
-    if (!valid) return
-    setBusy(true)
-    try {
-      if (sellMode === 'one') {
-        const r = await engine.recordUdhaarSale({
-          customerName,
-          items: parsed.map((l) => ({ productCode: l.product!.code, qtyKg: l.qty, unitPricePkrPerKg: l.price })),
-          cashReceivedPkr: cashPaisa / 100,
-          customerPhone: customerChoice === 'new' ? newPhone : undefined,
-          occurredOn: date,
-          note: note.trim() || undefined,
-        })
-        if ('duplicate' in r) {
-          setSuccess('Already recorded — nothing was posted twice.')
-        } else {
-          setSuccess(
-            `Sold & dispatched ${r.sale_ref} — Revenue PKR ${(r.revenue_paisa / 100).toLocaleString()}, COGS PKR ${(r.cogs_paisa / 100).toLocaleString()}, gross profit PKR ${((r.revenue_paisa - r.cogs_paisa) / 100).toLocaleString()}` +
-              (r.ar_paisa > 0 ? `, receivable PKR ${(r.ar_paisa / 100).toLocaleString()}` : ', fully paid in cash'),
-          )
-        }
-        onPosted()
-        return
-      }
-      const res = await engine.recordSale({
-        customerName,
-        items: parsed.map((l) => ({ productCode: l.product!.code, qtyKg: l.qty, unitPricePkrPerKg: l.price })),
-        cashReceivedPkr: cashPaisa / 100,
-        customerPhone: customerChoice === 'new' ? newPhone : undefined,
-        occurredOn: date,
-        note: note.trim() || undefined,
-      })
-      setInvoiceRef(res.sale_ref)
-      setDispatchOpen(true)
-      setDispatchQty(Object.fromEntries(parsed.map((_, i) => [i, l_delta(i)])))
-      setSuccess(
-        `Invoice ${res.sale_ref} recorded — Revenue PKR ${(res.revenue_paisa / 100).toLocaleString()}` +
-          (res.advance_applied_paisa > 0 ? `, advance applied PKR ${(res.advance_applied_paisa / 100).toLocaleString()}` : '') +
-          (res.ar_paisa > 0 ? `, receivable PKR ${(res.ar_paisa / 100).toLocaleString()}` : ', fully paid') +
-          '. Inventory is untouched until you dispatch below.',
-      )
+    if (!valid || !cashOk) return
+    const sale = {
+      customerName,
+      items: parsed.map((l) => ({ productCode: l.product!.code, qtyKg: l.qty, unitPricePkrPerKg: l.price })),
+      cashReceivedPkr: cashPaisa / 100,
+      customerPhone: customerChoice === 'new' ? newPhone : undefined,
+      occurredOn: date,
+      note: note.trim() || undefined,
+    }
+    if (sellMode === 'one') {
+      const r = await saleSafe.save((key) => engine.recordUdhaarSale({ ...sale, idempotencyKey: key }))
+      if (r === null) return
+      clearSale()
       onPosted()
-    } catch (err) {
-      setError(err)
-    } finally {
-      setBusy(false)
+      return
     }
-
-    function l_delta(i: number) {
-      return parsed[i]?.qtyOk ? String(parsed[i].qty) : ''
-    }
+    const res = await saleSafe.save((key) => engine.recordSale({ ...sale, idempotencyKey: key }))
+    if (res === null) return
+    setInvoiceRef(res.sale_ref)
+    setDispatchOpen(true)
+    setDispatchQty(Object.fromEntries(parsed.map((l, i) => [i, l.qtyOk ? String(l.qty) : ''])))
+    onPosted()
   }
+
+  // Two-step sale: once the invoice is saved it stays locked until "New sale", so a second tap on
+  // "Record invoice" can never create a second invoice by accident.
+  const invoiceSaved = invoiceRef !== null && dispatchOpen
+
+  function newSale() {
+    setInvoiceRef(null)
+    setDispatchOpen(false)
+    clearSale()
+    clearDispatch()
+  }
+
+  function clearDispatch() {
+    setManual({})
+    setOverrideReason('')
+    setDispatchNote('')
+  }
+
+  const dispatchValid =
+    singleLine &&
+    Number(dispatchQty[0] ?? 0) > 0 &&
+    !(mode === 'manual' && (overrideReason.trim().length === 0 || !manualBalanced)) &&
+    !fifoShort
 
   async function submitDispatch(e: React.FormEvent) {
     e.preventDefault()
-    setError(null)
-    setDispatchResult(null)
-    if (!invoiceRef || !singleLine) return
+    if (!invoiceRef || !dispatchValid) return
     const qtyKg = Number(dispatchQty[0] ?? 0)
-    if (!(qtyKg > 0)) return
-    setBusy(true)
-    try {
-      const res = await engine.recordDispatch({
+    const res = await dispatchSafe.save((key) =>
+      engine.recordDispatch({
         saleRef: invoiceRef,
         lines: [
           {
@@ -268,19 +262,14 @@ export default function SellSaltForm({ onPosted }: { onPosted: () => void }) {
         ],
         occurredOn: date,
         note: dispatchNote.trim() || undefined,
-      })
-      setDispatchResult(
-        `Dispatch ${res.dispatch_ref} — COGS PKR ${(res.cogs_paisa / 100).toLocaleString()} from ${res.allocations.length} batch(es), gross profit PKR ${((res.revenue_paisa - res.cogs_paisa) / 100).toLocaleString()}.`,
-      )
-      setManual({})
-      setOverrideReason('')
-      setDispatchCount((c) => c + 1)
-      onPosted()
-    } catch (err) {
-      setError(err)
-    } finally {
-      setBusy(false)
-    }
+        idempotencyKey: key,
+      }),
+    )
+    if (res === null) return
+    setManual({})
+    setOverrideReason('')
+    setDispatchCount((c) => c + 1)
+    onPosted()
   }
 
   return (
@@ -288,6 +277,8 @@ export default function SellSaltForm({ onPosted }: { onPosted: () => void }) {
       <Card>
         <SectionTitle>Sell salt — step 1: the invoice</SectionTitle>
         <form onSubmit={submit} className="space-y-5">
+          {error != null && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
+          <fieldset disabled={saleSafe.locked || dispatchSafe.locked || invoiceSaved} className="space-y-5">
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
             <Field label="Date">
               <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} required />
@@ -466,16 +457,28 @@ export default function SellSaltForm({ onPosted }: { onPosted: () => void }) {
             }
           />
 
-          {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
-          {success && <SuccessBanner>{success}</SuccessBanner>}
+          </fieldset>
 
-          <button
-            type="submit"
-            disabled={!valid || busy || !cashOk}
-            className="w-full rounded-xl bg-emerald-600 px-4 py-3.5 text-lg font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-          >
-            {busy ? 'Recording…' : sellMode === 'one' ? 'Sell & dispatch' : 'Record invoice'}
-          </button>
+          {invoiceSaved ? (
+            <div className="space-y-3">
+              <SavedBanner safe={saleSafe} />
+              <button
+                type="button"
+                onClick={newSale}
+                disabled={dispatchSafe.locked}
+                className="min-h-11 w-full rounded-xl border-2 border-slate-300 px-4 py-3.5 text-lg font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+              >
+                New sale
+              </button>
+            </div>
+          ) : (
+            <SaveControls
+              safe={saleSafe}
+              valid={valid && cashOk && !dispatchSafe.locked}
+              label={sellMode === 'one' ? 'Sell & dispatch' : 'Record invoice'}
+              onStartOver={clearSale}
+            />
+          )}
         </form>
       </Card>
 
@@ -494,6 +497,7 @@ export default function SellSaltForm({ onPosted }: { onPosted: () => void }) {
             </div>
           ) : (
             <form onSubmit={submitDispatch} className="space-y-5">
+              <fieldset disabled={dispatchSafe.locked} className="space-y-5">
               <div className="flex items-center justify-between rounded-xl bg-blue-50 px-4 py-3 text-sm text-blue-800">
                 <span>Default is FIFO — the oldest salt of this product at the chosen location goes first.</span>
                 <Badge tone="blue">{fifo === null ? 'checking stock…' : `${fifo.length} open batch(es)`}</Badge>
@@ -623,20 +627,15 @@ export default function SellSaltForm({ onPosted }: { onPosted: () => void }) {
                 <input type="text" value={dispatchNote} onChange={(e) => setDispatchNote(e.target.value)} placeholder="e.g. loaded on truck" className={inputCls} />
               </Field>
 
-              {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
-              {dispatchResult && <SuccessBanner>{dispatchResult}</SuccessBanner>}
+              </fieldset>
 
-              <button
-                type="submit"
-                disabled={
-                  busy ||
-                  (mode === 'manual' && (overrideReason.trim().length === 0 || !manualBalanced)) ||
-                  fifoShort
-                }
-                className="w-full rounded-xl bg-indigo-600 px-4 py-3.5 text-lg font-bold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-              >
-                {busy ? 'Dispatching…' : 'Record dispatch'}
-              </button>
+              <SaveControls
+                safe={dispatchSafe}
+                valid={dispatchValid && !saleSafe.locked}
+                label="Record dispatch"
+                onStartOver={clearDispatch}
+                className="bg-indigo-600 hover:bg-indigo-700"
+              />
             </form>
           )}
         </Card>

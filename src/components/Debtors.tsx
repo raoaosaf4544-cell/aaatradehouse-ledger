@@ -3,6 +3,7 @@ import { HandCoins } from 'lucide-react'
 import { engine } from '../lib/engine'
 import type { DebtorRow, SaleRow, DispatchAllocationRow } from '../lib/types'
 import { gramsToKg } from '../lib/types'
+import { SaveControls, SavedBanner, useSafeSave } from './SafeSave'
 import {
   Badge,
   Card,
@@ -13,7 +14,6 @@ import {
   SectionTitle,
   Spinner,
   StatCard,
-  SuccessBanner,
 } from './ui'
 
 /**
@@ -31,9 +31,7 @@ export default function Debtors({ onPosted }: { onPosted: () => void }) {
   const [payAmount, setPayAmount] = useState('')
   const [payDate, setPayDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [payNote, setPayNote] = useState('')
-  const [payBusy, setPayBusy] = useState(false)
-  const [payError, setPayError] = useState<unknown>(null)
-  const [payOk, setPayOk] = useState<string | null>(null)
+  const paySafe = useSafeSave()
 
   useEffect(() => {
     Promise.all([engine.debtors(), engine.sales(), engine.dispatchAllocations()])
@@ -60,32 +58,36 @@ export default function Debtors({ onPosted }: { onPosted: () => void }) {
     return m
   }, [allocs])
 
+  function closePayment() {
+    setPayFor(null)
+    setPayAmount('')
+    setPayNote('')
+  }
+
   async function submitPayment(e: React.FormEvent) {
     e.preventDefault()
-    if (!payFor) return
-    setPayBusy(true)
-    setPayError(null)
-    setPayOk(null)
+    if (!payFor || !(Number(payAmount) > 0)) return
+    const res = await paySafe.save((key) =>
+      engine
+        .recordCustomerPayment({
+          customerName: payFor,
+          amountPkr: Number(payAmount),
+          occurredOn: payDate,
+          note: payNote.trim() || undefined,
+          idempotencyKey: key,
+        })
+        .then(() => true),
+    )
+    if (res === null) return
+    closePayment()
     try {
-      await engine.recordCustomerPayment({
-        customerName: payFor,
-        amountPkr: Number(payAmount),
-        occurredOn: payDate,
-        note: payNote.trim() || undefined,
-      })
-      setPayOk(`Payment of PKR ${Number(payAmount).toLocaleString()} received from ${payFor}.`)
       const [d, s] = await Promise.all([engine.debtors(), engine.sales()])
       setDebtors(d)
       setSales(s)
-      setPayFor(null)
-      setPayAmount('')
-      setPayNote('')
-      onPosted()
-    } catch (err) {
-      setPayError(err)
-    } finally {
-      setPayBusy(false)
+    } catch {
+      // saved already; the lists refresh on the next visit
     }
+    onPosted()
   }
 
   if (error) return <ErrorBanner error={error} />
@@ -110,10 +112,13 @@ export default function Debtors({ onPosted }: { onPosted: () => void }) {
         </StatCard>
       </div>
 
+      {!payFor && <SavedBanner safe={paySafe} />}
+
       {payFor && (
         <Card>
           <SectionTitle>Receive payment from {payFor}</SectionTitle>
           <form onSubmit={submitPayment} className="space-y-4">
+            <fieldset disabled={paySafe.locked} className="space-y-4">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="Amount (PKR)">
                 <input type="number" min="1" step="0.01" inputMode="decimal" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} className={inputCls} required />
@@ -125,20 +130,13 @@ export default function Debtors({ onPosted }: { onPosted: () => void }) {
             <Field label="Note (optional)">
               <input type="text" value={payNote} onChange={(e) => setPayNote(e.target.value)} placeholder="e.g. cash, against INV-00001" className={inputCls} />
             </Field>
-            {payError && <ErrorBanner error={payError} onDismiss={() => setPayError(null)} />}
-            {payOk && <SuccessBanner>{payOk}</SuccessBanner>}
-            <div className="flex gap-3">
-              <button
-                type="submit"
-                disabled={payBusy || !(Number(payAmount) > 0)}
-                className="rounded-xl bg-emerald-600 px-6 py-3 text-base font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-              >
-                {payBusy ? 'Recording…' : 'Receive payment'}
-              </button>
-              <button type="button" onClick={() => setPayFor(null)} className="rounded-xl border border-slate-300 px-6 py-3 text-base font-semibold text-slate-600 hover:bg-slate-50">
+            </fieldset>
+            <SaveControls safe={paySafe} valid={Number(payAmount) > 0} label="Receive payment" onStartOver={closePayment} />
+            {!paySafe.locked && (
+              <button type="button" onClick={closePayment} className="min-h-11 w-full rounded-xl border border-slate-300 px-6 py-3 text-base font-semibold text-slate-600 hover:bg-slate-50">
                 Cancel
               </button>
-            </div>
+            )}
           </form>
         </Card>
       )}
@@ -179,6 +177,7 @@ export default function Debtors({ onPosted }: { onPosted: () => void }) {
                     <td className="px-3 py-2.5 text-right">
                       {d.outstanding_paisa > 0 && (
                         <button
+                          disabled={paySafe.locked}
                           onClick={() => {
                             setPayFor(d.customer_name)
                             setPayAmount(String(d.outstanding_paisa / 100))
