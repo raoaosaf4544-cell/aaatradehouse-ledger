@@ -14,7 +14,6 @@ import type {
   GradeOutput,
   Customer,
   SaleRow,
-  SaleLineRow,
   DispatchAllocationRow,
   DebtorRow,
   FifoBatch,
@@ -326,24 +325,6 @@ export class LedgerEngine {
       .limit(limit)
     if (error) throw new InvariantError(error.message)
     return data as SaleRow[]
-  }
-
-  /** Invoice line items for the dispatch form (app.sale_lines). */
-  async saleLines(saleIds: number[]): Promise<Map<number, SaleLineRow[]>> {
-    const result = new Map<number, SaleLineRow[]>()
-    if (saleIds.length === 0) return result
-    const { data, error } = await supabase
-      .from('sale_lines')
-      .select('*')
-      .in('sale_id', saleIds)
-      .order('line_no', { ascending: true })
-    if (error) throw new InvariantError(error.message)
-    for (const l of (data ?? []) as SaleLineRow[]) {
-      const list = result.get(l.sale_id) ?? []
-      list.push(l)
-      result.set(l.sale_id, list)
-    }
-    return result
   }
 
   /** Per-batch COGS allocations (public.v_dispatch_allocations). */

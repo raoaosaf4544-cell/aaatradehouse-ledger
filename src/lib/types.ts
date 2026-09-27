@@ -178,17 +178,6 @@ export type SaleRow = {
   invoiced_grams: number
 }
 
-export type SaleLineRow = {
-  id: number
-  sale_id: number
-  line_no: number
-  product_id: number
-  qty_grams: number
-  unit_price_paisa_per_kg: number
-  revenue_paisa: number
-  dispatched_grams: number
-}
-
 export type DispatchAllocationRow = {
   dispatch_ref: string
   occurred_on: string

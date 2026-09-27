@@ -4,7 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --port=3000 --host=0.0.0.0",
+    "dev": "vite --port=3000 --host=127.0.0.1",
+    "dev:phone": "vite --port=3000 --host=0.0.0.0",
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
@@ -19,8 +20,7 @@
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "xlsx": "^0.18.5"
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
