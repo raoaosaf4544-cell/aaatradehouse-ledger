@@ -274,24 +274,36 @@ Not fixed yet — tracked here so nobody relies on the missing behaviour.
   and `public.reject_log` default their `id` to `notifications_id_seq` / `reject_log_id_seq`,
   which the baseline does not create. On an empty database those two `create table` statements fail.
 
-## 15. Pending corrections — awaiting owner confirmation
+## 15. Corrections against the paper register
 
-Found by auditing the app against the paper register. **Nothing has been changed in the books.** Each
-error will be fixed with a reversing entry (never a delete) only after the owner confirms it.
+The paper register is the source of truth. Every fix is a **new** correcting entry posted through
+`public.post_correction` (never an edit or delete): `source = 'correction'`, `source_ref` = the original
+ref, its own idempotency key, created by the signed-in user. Posted 2026-09-27 by Rao Aosaf (Operator).
 
-| Date | Entry | App says | Register says | Status |
-|---|---|---|---|---|
-| 28 Aug | "Petrol" CL-20260828-029 | Rs 5,000 | Rs 500 | awaiting confirmation |
-| 6 Sep | EV-000246 | Rs 900 | not in register | awaiting father |
-| 6 Sep | EV-000247 | Rs 24,000 | not in register | awaiting father |
-| 13 Sep | EV-000210 "sell Rs 3,150 (no kg)" | Rs 3,150 | duplicate of Hakim Ali's Rs 3,100 payment EV-000174 | awaiting confirmation |
-| 14 Sep | Salt purchase EV-000169 | Rs 117,500 held as a payable | **confirmed by owner: paid in cash in full that day** | confirmed — correction to be posted |
+| | Original | What was wrong | Register says | Correcting entry | Status |
+|---|---|---|---|---|---|
+| A | CL-20260828-029 "Petrol", 28 Aug | booked Rs 5,000 | Rs 500 | **EV-000265** (28 Aug): Dr Cash 4,500 / Cr Fuel 4,500 | corrected |
+| B | EV-000246 (Rs 900), EV-000247 (Rs 24,000), 6 Sep | not in register | — | — | **pending: awaiting father** |
+| C | EV-000210 "sell Rs 3,150 (no kg)", 13 Sep | duplicate of Hakim Ali's Rs 3,100 payment EV-000174 | only one payment | **EV-000266** (13 Sep): Dr Suspense 3,150 / Cr Cash 3,150 | corrected |
+| D | EV-000169 salt purchase Rs 117,500, 14 Sep | held as a payable | paid in cash in full that day | **EV-000267** (14 Sep): Dr Accounts Payable 117,500 / Cr Cash 117,500 | corrected |
+| E | EV-000248 capital Rs 600,000, 19 Sep | typed in on 19 Sep | money arrived earlier; owner decision: 23 Aug | **EV-000263** (23 Aug): Dr Cash / Cr Owner Capital 600,000, then **EV-000264** (19 Sep): exact reverse of EV-000248 | corrected |
+
+Results after A, C, D, E: cash on hand Rs 492,545.00; Owner Capital Rs 1,100,000; Accounts Payable
+Rs 0; debtors Rs 21,390; debits = credits; day-by-day cash from 23 Aug never below zero (lowest
+Rs 492,545 on 18 Sep).
 
 Not errors, recategorisation only:
 
 - "Sabiqa" EV-000211 to EV-000214 (Rs 1,650 cash-in): real cash received for earlier sales.
   Amounts are correct; they only need moving out of Suspense later.
+- Correction C moved Rs 3,150 back into Suspense (the original had put it there); clear it together
+  with the rest of Suspense.
 - 8 Sep correction entries EV-000252 to EV-000262 (Rs 3,630 total) are in the register and correct — no action.
+
+**Future task:** make the cash guard check the day-by-day running balance, not only the total.
+`app.assert_cash_nonnegative` checks today's total cash only, so a back-dated entry could make
+history show a negative day without being blocked. The 2026-09-27 corrections were checked by hand
+(no negative day), but the database does not enforce it yet.
 
 ## 16. Access control (Task 3, 2026-09-27)
 
