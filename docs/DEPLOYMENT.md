@@ -33,28 +33,23 @@ the Excel — that is by design.
 - **Build** (`vercel.json`): `bun install --frozen-lockfile`, `bun run build`, output `dist`,
   SPA rewrite so refreshing any page works.
 - **Environment variables** (Production + Preview): only `VITE_SUPABASE_URL` and
-  `VITE_SUPABASE_ANON_KEY` (the `sb_publishable_…` key). Never a service-role key or database
-  password. No `VITE_SENTRY_DSN` yet (Sentry stays off until one is set).
+  `VITE_SUPABASE_ANON_KEY` (the `sb_publishable_…` key), plus `VITE_SENTRY_DSN` (public DSN).
+  Never a service-role key, database password or Sentry auth token.
 - **Supabase Auth → URL Configuration:** Site URL = the live URL; Redirect URLs =
   `https://aaatradehouse-ledger.vercel.app/**` and `http://127.0.0.1:3000/**`. Sign-ups OFF.
 - **Sign-out** clears this device only (`scope: 'local'`): the owner and his father share one login.
 
-## 3. Sentry (error tracking) — one-time manual step
+## 3. Sentry (error tracking) — LIVE since 2026-09-27
 
-The Sentry MCP connection is **read-only** (it can inspect orgs/issues but has
-no project-creation tool), so create the project once in the dashboard:
-
-1. **sentry.io → org `aaatradehouse` → Settings → Projects → Create Project**
-   → Platform: **React**, name: `ledger-web`.
-2. Copy the **DSN** (looks like `https://…@o….ingest.sentry.io/…`).
-3. Add it to Vercel as `VITE_SENTRY_DSN` and redeploy.
-
-Until a DSN is set, Sentry is initialized but **disabled** — the app runs fine
-and the error boundary still shows a local crash screen.
+- Project `aaatradehouse-ledger` (platform React) in org `aaatradehouse`, team `aaatradehouse`
+  (separate from the org's `python` project).
+- Its **public** DSN is set in Vercel as `VITE_SENTRY_DSN` (Production + Preview). A DSN only lets
+  the app *send* error reports; no Sentry auth token is in the app or in Vercel.
+- Local development has no DSN (`.env`), so nothing is reported from the laptop.
 
 Privacy rules already coded in `src/main.tsx`:
 - console/fetch/XHR breadcrumbs are dropped (no financial data in breadcrumbs),
-- the error boundary never displays amounts,
+- the error boundary never displays amounts or raw error text,
 - only stack traces + release info leave the browser.
 
 ## 4. Verifying a deployment
