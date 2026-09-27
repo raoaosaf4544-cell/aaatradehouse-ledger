@@ -55,8 +55,12 @@ export function EntryMenu({ entryRef, onChanged }: { entryRef: string; onChanged
       {deleting && (
         <DeleteEntryDialog
           entryRef={entryRef}
-          onClose={() => setDeleting(false)}
-          onDeleted={onChanged}
+          onClose={(deleted) => {
+            setDeleting(false)
+            // refresh the list only after the owner has read the result: the refresh removes this row (and this
+            // dialog with it)
+            if (deleted) onChanged()
+          }}
         />
       )}
     </div>
@@ -77,7 +81,7 @@ function Change({ label, before, after }: { label: string; before: React.ReactNo
   )
 }
 
-function DeleteEntryDialog({ entryRef, onClose, onDeleted }: { entryRef: string; onClose: () => void; onDeleted: () => void }) {
+function DeleteEntryDialog({ entryRef, onClose: close }: { entryRef: string; onClose: (deleted: boolean) => void }) {
   const [preview, setPreview] = useState<DeletePreview | null>(null)
   const [loadError, setLoadError] = useState<unknown>(null)
   const [reason, setReason] = useState('')
@@ -85,11 +89,15 @@ function DeleteEntryDialog({ entryRef, onClose, onDeleted }: { entryRef: string;
   const [error, setError] = useState<string | null>(null)
   const [deletedRefs, setDeletedRefs] = useState<string[]>([])
   const heading = useRef<HTMLHeadingElement>(null)
+  const doneRef = useRef(false)
+  const onClose = () => close(doneRef.current)
+  const phaseRef = useRef(phase)
+  phaseRef.current = phase
 
   useEffect(() => {
     heading.current?.focus()
     engine.deletePreview(entryRef).then(setPreview).catch(setLoadError)
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && phase !== 'deleting' && onClose()
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && phaseRef.current !== 'deleting' && onClose()
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -102,8 +110,8 @@ function DeleteEntryDialog({ entryRef, onClose, onDeleted }: { entryRef: string;
     try {
       const r = await engine.deleteEntry(entryRef, reason)
       setDeletedRefs(r.event_refs ?? [])
+      doneRef.current = true
       setPhase('done')
-      onDeleted()
     } catch (e) {
       const definite = (e as { definite?: boolean }).definite !== false
       setError(friendlyMessage(e, 'save'))
