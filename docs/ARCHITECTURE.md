@@ -274,6 +274,10 @@ Not fixed yet — tracked here so nobody relies on the missing behaviour.
   and `public.reject_log` default their `id` to `notifications_id_seq` / `reject_log_id_seq`,
   which the baseline does not create. On an empty database those two `create table` statements fail.
 
+- **Sales 6–13 Sep drew stock from BATCH-075 before it arrived (14 Sep).** The true source was BATCH-001
+  rock salt, ground at the plant, and the grinding was never recorded as a crush run. Fix with one
+  adjustment at the first physical stock count. From now on every grinding is recorded in Crush Salt.
+
 ## 15. Corrections against the paper register
 
 The paper register is the source of truth. Every fix is a **new** correcting entry posted through
