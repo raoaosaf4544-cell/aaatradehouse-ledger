@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState } from 'react'
-import { Hammer, Landmark, PlusCircle, RefreshCw, ShieldAlert, ShieldCheck, ShoppingCart } from 'lucide-react'
+import { BookUser, HandCoins, PackageOpen, PlusCircle, RefreshCw, ShieldAlert, ShieldCheck } from 'lucide-react'
 import { engine } from '../lib/engine'
 import type { AccountBalance, DebtorRow, LedgerEntryRow, LedgerHealth, StockOnHand } from '../lib/types'
 import { Card, ErrorBanner, Kg, Money, SectionTitle, ShowMore, Spinner, StatCard, usePaged } from './ui'
@@ -84,22 +84,31 @@ export default function Dashboard({ go }: { go?: (tab: string) => void }) {
   return (
     <div className="space-y-6">
       {go && (
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          {[
-            { id: 'record-capital', label: 'Add Investment', icon: Landmark, cls: 'hover:border-emerald-300 hover:bg-emerald-50' },
-            { id: 'record-purchase', label: 'Buy Inventory', icon: ShoppingCart, cls: 'hover:border-indigo-300 hover:bg-indigo-50' },
-            { id: 'record-crush', label: 'Crush Salt', icon: Hammer, cls: 'hover:border-amber-300 hover:bg-amber-50' },
-            { id: 'record', label: 'More…', icon: PlusCircle, cls: 'hover:border-slate-300 hover:bg-slate-50' },
-          ].map((a) => (
-            <button
-              key={a.id}
-              onClick={() => go(a.id)}
-              className={`flex min-h-11 items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left text-sm font-semibold text-slate-700 shadow-sm transition ${a.cls}`}
-            >
-              <a.icon className="h-5 w-5 shrink-0 text-slate-500" />
-              {a.label}
-            </button>
-          ))}
+        <div className="space-y-3">
+          {/* the three things done every day: one big tap each */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {[
+              { id: 'record-sale', label: 'Sell Salt', icon: PackageOpen, cls: 'bg-emerald-700 hover:bg-emerald-800' },
+              { id: 'record-moneyout', label: 'Money Out', icon: BookUser, cls: 'bg-slate-800 hover:bg-slate-900' },
+              { id: 'debtors', label: 'Receive payment', icon: HandCoins, cls: 'bg-blue-700 hover:bg-blue-800' },
+            ].map((a) => (
+              <button
+                key={a.id}
+                onClick={() => go(a.id)}
+                className={`flex min-h-16 items-center justify-center gap-3 rounded-2xl px-5 py-4 text-xl font-bold text-white shadow-sm transition ${a.cls}`}
+              >
+                <a.icon className="h-7 w-7 shrink-0" />
+                {a.label}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => go('record')}
+            className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border-2 border-slate-300 bg-white px-4 py-2.5 text-base font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            <PlusCircle className="h-5 w-5 shrink-0" />
+            Other entries — investment, buy salt, crush salt
+          </button>
         </div>
       )}
 

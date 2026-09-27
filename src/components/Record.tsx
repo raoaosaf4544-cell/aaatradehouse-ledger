@@ -32,7 +32,7 @@ export default function Record({ go }: { go: (tab: string) => void }) {
       tone: 'from-teal-500 to-emerald-600',
     },
     {
-      id: 'cash',
+      id: 'record-moneyout',
       title: 'Record Money Out',
       desc: 'Labour, fuel, bills, meals — with a live preview of the exact journal lines before saving.',
       icon: BookUser,
