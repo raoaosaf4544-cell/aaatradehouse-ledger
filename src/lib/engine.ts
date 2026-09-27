@@ -21,6 +21,9 @@ import type {
   AccountTotals,
   SalesTotals,
   LedgerHealth,
+  CashBookDay,
+  CashDay,
+  CashLine,
 } from './types'
 
 /**
@@ -77,7 +80,7 @@ type AccountRow = { id: number; code: string; name: string }
 const OFFLINE_READS = [
   'listEvents', 'accountBalances', 'stockOnHand', 'batches', 'products', 'locations', 'openReviewItems',
   'eventLines', 'accountLines', 'accountTotals', 'customers', 'customerAdvanceBalance', 'sales', 'salesTotals',
-  'dispatchAllocations', 'debtors', 'ledgerHealth',
+  'dispatchAllocations', 'debtors', 'ledgerHealth', 'cashDay',
 ] as const
 
 export class LedgerEngine {
@@ -240,6 +243,27 @@ export class LedgerEngine {
     const { data, error } = await supabase.from('v_account_totals').select('*').eq('code', accountCode).single()
     if (error) throw rpcError(error)
     return data as AccountTotals
+  }
+
+  /**
+   * One day of the cash book: that day's cash lines with running balance, the day totals, the last day before it
+   * that has entries (its closing is the opening when this day has none) and the next day that has entries.
+   */
+  async cashDay(date: string): Promise<CashBookDay> {
+    const [day, lines, before, after] = await Promise.all([
+      supabase.from('v_cash_days').select('*').eq('occurred_on', date).maybeSingle(),
+      supabase.from('v_cash_book').select('*').eq('occurred_on', date)
+        .order('event_id', { ascending: true }).order('entry_seq', { ascending: true }),
+      supabase.from('v_cash_days').select('*').lt('occurred_on', date).order('occurred_on', { ascending: false }).limit(1).maybeSingle(),
+      supabase.from('v_cash_days').select('occurred_on').gt('occurred_on', date).order('occurred_on', { ascending: true }).limit(1).maybeSingle(),
+    ])
+    for (const r of [day, lines, before, after]) if (r.error) throw rpcError(r.error)
+    return {
+      day: (day.data as CashDay | null) ?? null,
+      lines: (lines.data ?? []) as CashLine[],
+      before: (before.data as CashDay | null) ?? null,
+      after: (after.data as { occurred_on: string } | null)?.occurred_on ?? null,
+    }
   }
 
   /** Integrity checks computed by the database (debits = credits, stock tie, no negative cash day). */

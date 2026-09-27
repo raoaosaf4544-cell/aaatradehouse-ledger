@@ -9,6 +9,7 @@ import { Spinner } from './components/ui'
 import Sidebar from './components/Sidebar'
 import Dashboard from './components/Dashboard'
 import CashLedger from './components/CashLedger'
+import CashBook from './components/CashBook'
 import SaltInventory from './components/SaltInventory'
 import Financials from './components/Financials'
 import ReviewQueue from './components/ReviewQueue'
@@ -88,7 +89,7 @@ function App() {
 }
 
 const TABS = new Set([
-  'dashboard', 'cash', 'salt', 'financials', 'review', 'debtors', 'record',
+  'dashboard', 'cashbook', 'cash', 'salt', 'financials', 'review', 'debtors', 'record',
   'record-capital', 'record-purchase', 'record-crush', 'record-moneyout', 'record-sale',
 ])
 const tabFromHash = () => {
@@ -200,6 +201,7 @@ function Ledger({ userName }: { userName: string }) {
 
         <div className="flex-1 overflow-auto p-4 md:p-8">
           {activeTab === 'dashboard' && <Dashboard key={dataVersion} go={go} />}
+          {activeTab === 'cashbook' && <CashBook />}
           {activeTab === 'cash' && <CashLedger />}
           {activeTab === 'salt' && <SaltInventory key={dataVersion} />}
           {activeTab === 'financials' && <Financials />}

@@ -49,6 +49,25 @@ export type AccountLineRow = {
   credit_paisa: number
 }
 
+/** One day of the cash book (public.v_cash_days). */
+export type CashDay = { occurred_on: string; lines: number; in_paisa: number; out_paisa: number; opening_paisa: number; closing_paisa: number }
+
+/** One line of the cash book with its running balance (public.v_cash_book). */
+export type CashLine = {
+  occurred_on: string
+  event_id: number
+  event_ref: string
+  description: string
+  source: string
+  entry_seq: number
+  in_paisa: number
+  out_paisa: number
+  balance_paisa: number
+}
+
+/** A day as the cash book screen shows it: the day's lines plus the days either side that have entries. */
+export type CashBookDay = { day: CashDay | null; lines: CashLine[]; before: CashDay | null; after: string | null }
+
 /** Per-account totals computed by the database (public.v_account_totals). */
 export type AccountTotals = { code: string; line_count: number; debit_paisa: number; credit_paisa: number }
 

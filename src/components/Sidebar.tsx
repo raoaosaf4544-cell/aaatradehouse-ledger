@@ -1,4 +1,4 @@
-import { Boxes, Flag, LayoutDashboard, Wallet, X, BarChart3, PlusCircle, Landmark, ShoppingCart, Hammer, BookUser, HandCoins, PackageOpen } from 'lucide-react'
+import { Boxes, BookOpen, Flag, LayoutDashboard, Wallet, X, BarChart3, PlusCircle, Landmark, ShoppingCart, Hammer, BookUser, HandCoins, PackageOpen } from 'lucide-react'
 
 export default function Sidebar({
   activeTab,
@@ -13,6 +13,7 @@ export default function Sidebar({
 }) {
   const tabs = [
     { id: 'dashboard', name: 'Dashboard', icon: LayoutDashboard },
+    { id: 'cashbook', name: 'Cash Book (day by day)', icon: BookOpen },
     { id: 'cash', name: 'Cash Ledger', icon: Wallet },
     { id: 'salt', name: 'Salt Inventory', icon: Boxes },
     { id: 'financials', name: 'Financials & Trial Balance', icon: BarChart3 },
