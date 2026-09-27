@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Users, Calculator } from 'lucide-react'
 import { engine } from '../lib/engine'
 import type { Customer, Product } from '../lib/types'
+import { BAG_SIZES, MAN_KG, lineKg, qtyWords, type QtyUnit } from '../lib/qty'
 import { SaveControls, useSafeSave } from './SafeSave'
 import {
   Card,
@@ -23,9 +24,13 @@ import {
 
 type LineDraft = {
   productCode: string
-  qtyKg: string
-  unitPricePkr: string
+  unit: QtyUnit
+  count: string
+  bagKg: string
+  billTotalPkr: string
 }
+
+const emptyLine = (): LineDraft => ({ productCode: '', unit: 'kg', count: '', bagKg: '', billTotalPkr: '' })
 
 export default function SellSaltForm({ onPosted }: { onPosted: () => void }) {
   const [date, setDate] = useState(todayPK)
@@ -35,7 +40,7 @@ export default function SellSaltForm({ onPosted }: { onPosted: () => void }) {
   const [existingCustomerId, setExistingCustomerId] = useState('')
   const [newName, setNewName] = useState('')
   const [newPhone, setNewPhone] = useState('')
-  const [lines, setLines] = useState<LineDraft[]>([{ productCode: '', qtyKg: '', unitPricePkr: '' }])
+  const [lines, setLines] = useState<LineDraft[]>([emptyLine()])
   const [cashPkr, setCashPkr] = useState('')
   const [note, setNote] = useState('')
   const [advancePaisa, setAdvancePaisa] = useState(0)
@@ -72,13 +77,17 @@ export default function SellSaltForm({ onPosted }: { onPosted: () => void }) {
   const parsed = useMemo(
     () =>
       lines.map((l) => {
-        const qty = Number(l.qtyKg)
-        const price = Number(l.unitPricePkr)
-        const qtyOk = Number.isFinite(qty) && qty > 0
-        const priceOk = Number.isFinite(price) && price > 0
+        const count = Number(l.count)
+        const bagKg = Number(l.bagKg)
+        const kg = lineKg(l.unit, Number.isFinite(count) ? count : 0, Number.isFinite(bagKg) ? bagKg : 0)
+        const qty = Math.round(kg * 1000) / 1000
+        const bill = Number(l.billTotalPkr)
+        const qtyOk = qty > 0
+        const billOk = Number.isFinite(bill) && bill > 0
         const product = products?.find((p) => p.code === l.productCode) ?? null
-        const revenuePaisa = qtyOk && priceOk ? Math.round(qty * price * 100) : 0
-        return { ...l, qty, price, qtyOk, priceOk, product, revenuePaisa }
+        const revenuePaisa = billOk ? Math.round(bill * 100) : 0
+        const perKg = qtyOk && billOk ? bill / qty : 0
+        return { ...l, countN: count, bagKgN: bagKg, qty, qtyOk, billOk, product, revenuePaisa, perKg }
       }),
     [lines, products],
   )
@@ -88,7 +97,7 @@ export default function SellSaltForm({ onPosted }: { onPosted: () => void }) {
   const advanceApply = Math.min(Math.max(advancePaisa, 0), revenuePaisa)
   const arPaisa = revenuePaisa - Math.min(cashPaisa, revenuePaisa) - advanceApply
   const cashOk = cashPaisa + advanceApply <= revenuePaisa
-  const linesValid = parsed.length > 0 && parsed.every((l) => l.qtyOk && l.priceOk && l.product)
+  const linesValid = parsed.length > 0 && parsed.every((l) => l.qtyOk && l.billOk && l.product)
   const customerValid = customerChoice === 'new' ? newName.trim().length > 0 : !!selectedCustomer
   const valid = customerValid && linesValid && cashOk
 
@@ -100,7 +109,7 @@ export default function SellSaltForm({ onPosted }: { onPosted: () => void }) {
   ].filter((l) => l.debit > 0 || l.credit > 0)
 
   function clearSale() {
-    setLines([{ productCode: '', qtyKg: '', unitPricePkr: '' }])
+    setLines([emptyLine()])
     setCashPkr('')
     setNote('')
   }
@@ -111,11 +120,12 @@ export default function SellSaltForm({ onPosted }: { onPosted: () => void }) {
     const r = await safe.save((key) =>
       engine.recordUdhaarSale({
         customerName,
-        items: parsed.map((l) => ({ productCode: l.product!.code, qtyKg: l.qty, unitPricePkrPerKg: l.price })),
+        // the typed bill total goes to the database as-is (no per-kg rounding loss)
+        items: parsed.map((l) => ({ productCode: l.product!.code, qtyKg: l.qty, lineTotalPkr: l.revenuePaisa / 100 })),
         cashReceivedPkr: cashPaisa / 100,
         customerPhone: customerChoice === 'new' ? newPhone : undefined,
         occurredOn: date,
-        note: note.trim() || undefined,
+        note: [parsed.map((l) => qtyWords(l.unit, l.countN, l.bagKgN)).join(' + '), note.trim()].filter(Boolean).join(' — '),
         idempotencyKey: key,
       }),
     )
@@ -184,23 +194,19 @@ export default function SellSaltForm({ onPosted }: { onPosted: () => void }) {
             <span className="text-base font-semibold text-slate-700">What are they buying?</span>
             <button
               type="button"
-              onClick={() => setLines((ls) => [...ls, { productCode: '', qtyKg: '', unitPricePkr: '' }])}
+              onClick={() => setLines((ls) => [...ls, emptyLine()])}
               className="min-h-11 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-600 hover:bg-slate-50"
             >
               + Add line
             </button>
           </div>
           <div className="space-y-3">
-            {parsed.map((l, i) => (
-              <div key={i} className="grid grid-cols-12 items-end gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <div className="col-span-12 sm:col-span-5">
-                  <Field label={i === 0 ? 'Product' : ''}>
-                    <select
-                      value={l.productCode}
-                      onChange={(e) => setLines((ls) => ls.map((x, j) => (j === i ? { ...x, productCode: e.target.value } : x)))}
-                      className={inputCls}
-                      required
-                    >
+            {parsed.map((l, i) => {
+              const set = (patch: Partial<LineDraft>) => setLines((ls) => ls.map((x, j) => (j === i ? { ...x, ...patch } : x)))
+              return (
+                <div key={i} className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <Field label={`Product${parsed.length > 1 ? ` (line ${i + 1})` : ''}`}>
+                    <select value={l.productCode} onChange={(e) => set({ productCode: e.target.value })} className={inputCls} required>
                       <option value="">— choose —</option>
                       {products?.map((p) => (
                         <option key={p.code} value={p.code}>
@@ -209,47 +215,101 @@ export default function SellSaltForm({ onPosted }: { onPosted: () => void }) {
                       ))}
                     </select>
                   </Field>
-                </div>
-                <div className="col-span-6 sm:col-span-3">
-                  <Field label={i === 0 ? 'Quantity (kg)' : ''}>
+                  <div>
+                    <span className="mb-1.5 block text-base font-semibold text-slate-700">Quantity counted in</span>
+                    <div className="grid grid-cols-3 gap-2">
+                      {([
+                        { id: 'kg', label: 'kg' },
+                        { id: 'bag', label: 'Bags' },
+                        { id: 'man', label: `Man (${MAN_KG} kg)` },
+                      ] as const).map((u) => (
+                        <button
+                          key={u.id}
+                          type="button"
+                          onClick={() => set({ unit: u.id })}
+                          className={`min-h-11 rounded-xl border-2 px-2 text-base font-semibold transition ${
+                            l.unit === u.id ? 'border-blue-500 bg-blue-50 text-blue-800' : 'border-slate-200 bg-white text-slate-700'
+                          }`}
+                        >
+                          {u.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label={l.unit === 'kg' ? 'How many kg?' : l.unit === 'bag' ? 'How many bags?' : 'How many man?'}>
+                      <input
+                        type="number"
+                        min="0"
+                        step={l.unit === 'bag' ? '1' : l.unit === 'man' ? '0.01' : '0.001'}
+                        inputMode="decimal"
+                        value={l.count}
+                        onChange={(e) => set({ count: e.target.value })}
+                        className={inputCls}
+                        required
+                      />
+                    </Field>
+                    {l.unit === 'bag' ? (
+                      <Field label="Bag size">
+                        <select value={l.bagKg} onChange={(e) => set({ bagKg: e.target.value })} className={inputCls} required>
+                          <option value="" disabled>Size…</option>
+                          {BAG_SIZES.map((b) => (
+                            <option key={b} value={String(b)}>{b} kg</option>
+                          ))}
+                        </select>
+                      </Field>
+                    ) : (
+                      <div />
+                    )}
+                  </div>
+                  <Field label="Bill total for this line (PKR)">
                     <input
                       type="number"
-                      min="1"
-                      step="0.001"
-                      inputMode="decimal"
-                      value={l.qtyKg}
-                      onChange={(e) => setLines((ls) => ls.map((x, j) => (j === i ? { ...x, qtyKg: e.target.value } : x)))}
-                      placeholder="e.g. 4000"
-                      className={inputCls}
-                      required
-                    />
-                  </Field>
-                </div>
-                <div className="col-span-6 sm:col-span-4">
-                  <Field label={i === 0 ? 'Price (PKR per kg)' : ''}>
-                    <input
-                      type="number"
-                      min="1"
+                      min="0"
                       step="0.01"
                       inputMode="decimal"
-                      value={l.unitPricePkr}
-                      onChange={(e) => setLines((ls) => ls.map((x, j) => (j === i ? { ...x, unitPricePkr: e.target.value } : x)))}
-                      placeholder="e.g. 12.50"
+                      value={l.billTotalPkr}
+                      onChange={(e) => set({ billTotalPkr: e.target.value })}
+                      placeholder="exactly as on the bill"
                       className={inputCls}
                       required
                     />
                   </Field>
+                  {l.qtyOk && (
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-base text-slate-700">
+                      <Calculator className="h-4 w-4 shrink-0" />
+                      <span>
+                        = <strong>{l.qty.toLocaleString()} kg</strong>
+                        {l.billOk && (
+                          <>
+                            {' '}· rate <strong>PKR {l.perKg.toLocaleString('en-PK', { maximumFractionDigits: 2 })} per kg</strong>
+                            {l.unit === 'bag' && l.bagKgN > 0 && <> · PKR {(l.perKg * l.bagKgN).toLocaleString('en-PK', { maximumFractionDigits: 2 })} per bag</>}
+                            {l.unit === 'man' && <> · PKR {(l.perKg * MAN_KG).toLocaleString('en-PK', { maximumFractionDigits: 2 })} per man</>}
+                          </>
+                        )}
+                      </span>
+                    </div>
+                  )}
+                  {parsed.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setLines((ls) => ls.filter((_, j) => j !== i))}
+                      className="min-h-11 rounded-lg border border-slate-300 px-3 text-base font-semibold text-slate-700 hover:bg-white"
+                    >
+                      Remove this line
+                    </button>
+                  )}
                 </div>
-                {l.revenuePaisa > 0 && (
-                  <div className="col-span-12 flex items-center gap-2 text-sm text-slate-600">
-                    <Calculator className="h-4 w-4" />
-                    Line total: <strong>PKR {(l.revenuePaisa / 100).toLocaleString()}</strong>
-                  </div>
-                )}
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
+
+        {revenuePaisa > 0 && (
+          <div className="rounded-xl bg-blue-50 px-4 py-3 text-base text-blue-900">
+            Bill total: <strong>PKR {(revenuePaisa / 100).toLocaleString('en-PK', { maximumFractionDigits: 2 })}</strong>
+          </div>
+        )}
 
         <Field label="Cash received now (PKR)" hint="Anything not paid now becomes customer receivable — tracked on the Debtors page.">
           <input
