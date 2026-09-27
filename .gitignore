@@ -9,3 +9,6 @@ coverage/
 
 # npm lockfile: this project uses bun.lock
 package-lock.json
+
+# local AI tool config
+.codex/
