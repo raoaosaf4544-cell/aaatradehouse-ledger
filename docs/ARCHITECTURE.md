@@ -292,3 +292,123 @@ Not errors, recategorisation only:
 - "Sabiqa" EV-000211 to EV-000214 (Rs 1,650 cash-in): real cash received for earlier sales.
   Amounts are correct; they only need moving out of Suspense later.
 - 8 Sep correction entries EV-000252 to EV-000262 (Rs 3,630 total) are in the register and correct — no action.
+
+## 16. Access control (Task 3, 2026-09-27)
+
+- **anon (the public key) can do nothing**: no EXECUTE on any `app`/`public` function, no SELECT on any
+  table/view/sequence, no USAGE on schema `app`. Verified by curl: every call returns HTTP 401 `42501`.
+- **Signed-in users** reach data only if `app.is_allowed_user()` is true (their `auth.users.id` is linked
+  in `app.users.auth_user_id` and the row is active). Every `app` table has one policy, `auth_read`, and
+  every `app.v_*` / `public.v_*` view is `security_invoker`, so RLS applies all the way down.
+- **Writes** go only through guarded `public.*` wrappers (`app.require_user()` raises "Not authorised").
+  The real logic lives in `app.*_impl` (callable only by `postgres`). `created_by` is always taken from
+  the signed-in user on the server; the `p_created_by` argument sent by the app is ignored.
+- **JARVIS** tables (`public.contacts`, `research_leads`, `notifications`, `reject_log`,
+  `staging_candidates`): RLS on, no policies, no anon/authenticated privileges. JARVIS connects as
+  `postgres` (owner, BYPASSRLS) through the pooler and is unaffected.
+- **JARVIS and the ledger (future, not built):** JARVIS must never touch the ledger through the
+  `postgres` role. It will get its own `app.users` row ("JARVIS — Rao's assistant") and its own Supabase
+  login, and call the same guarded RPCs, so `app.require_user()` identifies it exactly like a person and
+  every entry it makes is attributed to it.
+- Remaining advisor WARNs are intentional: the 10 guarded RPCs are SECURITY DEFINER and executable by
+  `authenticated` (that is how the app writes); "leaked password protection" is an Auth dashboard switch.
+  Supabase's own `supabase_admin` default privileges in `public` still grant new objects to anon; only
+  objects created by `postgres` (all of ours) are covered by the new defaults.
+
+### Rollback (only if the app breaks after Task 3)
+
+Run in the Supabase SQL editor, **only the part you need**, undoing C, then B, then A.
+3D (dropping the 9-argument `record_purchase`) should **not** be undone — it fixed the Salt Purchase form.
+
+```sql
+-- Undo 3C (JARVIS tables back to open)
+alter table public.contacts disable row level security;
+alter table public.research_leads disable row level security;
+alter table public.notifications disable row level security;
+alter table public.reject_log disable row level security;
+grant all on public.contacts, public.research_leads, public.notifications, public.reject_log,
+  public.staging_candidates to anon, authenticated;
+grant all on sequence public.notifications_id_seq, public.reject_log_id_seq to anon, authenticated;
+
+-- Undo 3B (reads: views back to owner-run, anon read policies and grants back)
+alter view public.v_debtors set (security_invoker = false);
+alter view public.v_parties set (security_invoker = false);
+alter view app.v_account_balances set (security_invoker = false);
+alter view app.v_batch_costs set (security_invoker = false);
+alter view app.v_batches set (security_invoker = false);
+alter view app.v_cash_summary set (security_invoker = false);
+alter view app.v_debtors set (security_invoker = false);
+alter view app.v_dispatch_allocations set (security_invoker = false);
+alter view app.v_events_with_party set (security_invoker = false);
+alter view app.v_sales set (security_invoker = false);
+alter view app.v_stock_onhand set (security_invoker = false);
+grant usage on schema app to anon;
+grant select on all tables in schema app to anon;
+grant select on all sequences in schema app to anon;
+grant all on public.v_account_balances, public.v_accounts, public.v_advances, public.v_batch_costs, public.v_batches,
+  public.v_customers, public.v_debtors, public.v_dispatch_allocations, public.v_events_with_party, public.v_ledger_lines,
+  public.v_locations, public.v_parties, public.v_products, public.v_review_queue, public.v_sales, public.v_stock_onhand
+  to anon, authenticated, service_role;
+do $$
+declare t text;
+begin
+  foreach t in array array['accounts','batches','events','ledger_entries','locations','movements',
+                           'products','review_queue','stg_excel_cash','users'] loop
+    execute format('create policy anon_read on app.%I for select to anon using (true)', t);
+  end loop;
+  foreach t in array array['sales','sale_lines','dispatches','dispatch_allocations','customer_advances','batch_cost_components'] loop
+    execute format('create policy read_only on app.%I for select to anon, authenticated using (true)', t);
+  end loop;
+end $$;
+create policy "parties read" on app.parties for select to public using (true);
+alter default privileges for role postgres in schema public grant all on tables to anon;
+alter default privileges for role postgres in schema public grant all on sequences to anon;
+alter default privileges for role postgres in schema public grant execute on functions to anon;
+alter default privileges for role postgres in schema app grant select on tables to anon;
+alter default privileges for role postgres grant execute on functions to public;
+
+-- Undo 3A (functions: remove wrappers, move the original functions back, reopen EXECUTE)
+drop function public.create_customer(text, text, text);
+drop function public.record_customer_payment(text, bigint, date, text, uuid, text);
+drop function public.record_dispatch(text, jsonb, date, text, text, uuid);
+drop function public.record_process_run(text, bigint, jsonb, bigint, bigint, boolean, date, text, uuid);
+drop function public.record_purchase(text, text, text, bigint, bigint, boolean, date, text, uuid, text, jsonb);
+drop function public.record_sale(text, jsonb, bigint, text, date, text, text, uuid);
+drop function public.record_udhaar_sale(text, jsonb, bigint, text, date, text, text, uuid, text);
+drop function public.resolve_review_item(integer, text, boolean);
+drop function public.suggest_sale_price(text, text, numeric);
+alter function app.create_customer_impl(text, text, text) rename to create_customer;
+alter function app.create_customer(text, text, text) set schema public;
+alter function app.record_customer_payment_impl(text, bigint, date, text, uuid, text) rename to record_customer_payment;
+alter function app.record_customer_payment(text, bigint, date, text, uuid, text) set schema public;
+alter function app.record_dispatch_impl(text, jsonb, date, text, text, uuid) rename to record_dispatch;
+alter function app.record_dispatch(text, jsonb, date, text, text, uuid) set schema public;
+alter function app.record_process_run_impl(text, bigint, jsonb, bigint, bigint, boolean, date, text, uuid) rename to record_process_run;
+alter function app.record_process_run(text, bigint, jsonb, bigint, bigint, boolean, date, text, uuid) set schema public;
+alter function app.record_purchase_impl(text, text, text, bigint, bigint, boolean, date, text, uuid, text, jsonb) rename to record_purchase;
+alter function app.record_purchase(text, text, text, bigint, bigint, boolean, date, text, uuid, text, jsonb) set schema public;
+alter function app.record_sale_impl(text, jsonb, bigint, text, date, text, text, uuid) rename to record_sale;
+alter function app.record_sale(text, jsonb, bigint, text, date, text, text, uuid) set schema public;
+alter function app.record_udhaar_sale_impl(text, jsonb, bigint, text, date, text, text, uuid, text) rename to record_udhaar_sale;
+alter function app.record_udhaar_sale(text, jsonb, bigint, text, date, text, text, uuid, text) set schema public;
+alter function app.resolve_review_item_impl(integer, text, boolean) rename to resolve_review_item;
+alter function app.resolve_review_item(integer, text, boolean) set schema public;
+alter function app.suggest_sale_price_impl(text, text, numeric) rename to suggest_sale_price;
+alter function app.suggest_sale_price(text, text, numeric) set schema public;
+create or replace function public.post_event(p_event_type text, p_occurred_on date, p_description text, p_lines jsonb,
+  p_party_type text default null, p_party_name text default null, p_created_by uuid default null)
+returns text language plpgsql security definer set search_path = app as $$
+begin
+  return app.post_event(p_event_type, p_occurred_on, p_description, p_lines, p_party_type, p_party_name, p_created_by);
+end $$;
+create or replace function public.record_customer_advance(p_customer text, p_amount_paisa bigint, p_occurred_on date default current_date,
+  p_note text default null, p_idempotency_key text default null, p_created_by uuid default null)
+returns jsonb language sql security definer set search_path = app as $$
+  select app.record_advance(p_customer, p_amount_paisa, p_occurred_on, p_note, p_idempotency_key, p_created_by)
+$$;
+grant execute on all functions in schema public to public, anon, authenticated, service_role;
+grant execute on all functions in schema app to public, anon, authenticated;
+```
+
+After undoing 3A the app still works for the signed-in user (it always sends `p_created_by`), but writes
+are no longer guarded and the anon key regains the old, unsafe access.
