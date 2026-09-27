@@ -7,6 +7,7 @@ import { SaveControls, SavedBanner, useSafeSave } from './SafeSave'
 import {
   Badge,
   Card,
+  DateField,
   EmptyState,
   ErrorBanner,
   Field,
@@ -14,6 +15,7 @@ import {
   SectionTitle,
   Spinner,
   StatCard,
+  todayPK,
 } from './ui'
 
 /**
@@ -29,7 +31,7 @@ export default function Debtors({ onPosted }: { onPosted: () => void }) {
   const [expanded, setExpanded] = useState<string | null>(null)
   const [payFor, setPayFor] = useState<string | null>(null)
   const [payAmount, setPayAmount] = useState('')
-  const [payDate, setPayDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [payDate, setPayDate] = useState(todayPK)
   const [payNote, setPayNote] = useState('')
   const paySafe = useSafeSave()
 
@@ -120,11 +122,9 @@ export default function Debtors({ onPosted }: { onPosted: () => void }) {
           <form onSubmit={submitPayment} className="space-y-4">
             <fieldset disabled={paySafe.locked} className="space-y-4">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <DateField label="Date received" value={payDate} onChange={setPayDate} />
               <Field label="Amount (PKR)">
                 <input type="number" min="1" step="0.01" inputMode="decimal" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} className={inputCls} required />
-              </Field>
-              <Field label="Date">
-                <input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} className={inputCls} required />
               </Field>
             </div>
             <Field label="Note (optional)">

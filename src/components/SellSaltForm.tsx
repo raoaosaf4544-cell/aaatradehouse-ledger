@@ -7,12 +7,14 @@ import { SaveControls, SavedBanner, useSafeSave } from './SafeSave'
 import {
   Badge,
   Card,
+  DateField,
   ErrorBanner,
   Field,
   inputCls,
   JournalPreview,
   SectionTitle,
   accountName,
+  todayPK,
 } from './ui'
 
 /**
@@ -23,7 +25,6 @@ import {
  * The engine computes every paisa; this form only previews what the DB will do.
  */
 
-const today = () => new Date().toISOString().slice(0, 10)
 
 type LineDraft = {
   productCode: string
@@ -39,7 +40,7 @@ type PreviewAlloc = {
 }
 
 export default function SellSaltForm({ onPosted }: { onPosted: () => void }) {
-  const [date, setDate] = useState(today)
+  const [date, setDate] = useState(todayPK)
   const [customers, setCustomers] = useState<Customer[] | null>(null)
   const [products, setProducts] = useState<Product[] | null>(null)
   const [locations, setLocations] = useState<Location[] | null>(null)
@@ -280,9 +281,7 @@ export default function SellSaltForm({ onPosted }: { onPosted: () => void }) {
           {error != null && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
           <fieldset disabled={saleSafe.locked || dispatchSafe.locked || invoiceSaved} className="space-y-5">
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-            <Field label="Date">
-              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} required />
-            </Field>
+            <DateField label="Date" value={date} onChange={setDate} />
             <Field label="Customer">
               <div className="grid grid-cols-2 gap-2">
                 {(['existing', 'new'] as const).map((c) => (

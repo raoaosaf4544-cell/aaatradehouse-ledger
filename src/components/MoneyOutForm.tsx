@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { engine } from '../lib/engine'
-import { Card, Field, inputCls, JournalPreview, SectionTitle, accountName } from './ui'
+import { Card, DateField, Field, inputCls, JournalPreview, SectionTitle, accountName, todayPK } from './ui'
 import { SaveControls, useSafeSave } from './SafeSave'
 
-type Category = { id: string; label: string; account: string; eventType: string }
+type Category = { id: string; label: string; account: string; eventType: string; asset?: boolean }
 
 const CATEGORIES: Category[] = [
   { id: 'labour', label: 'Labour', account: '5000', eventType: 'expense' },
@@ -14,39 +14,43 @@ const CATEGORIES: Category[] = [
   { id: 'repairs', label: 'Repairs & Maintenance', account: '5700', eventType: 'expense' },
   { id: 'admin', label: 'Admin & Office', account: '5800', eventType: 'expense' },
   { id: 'other_biz', label: 'Other Business Expense', account: '5900', eventType: 'expense' },
-  { id: 'bike', label: 'Vehicle Purchase / Improvement (asset)', account: '1400', eventType: 'asset_purchase' },
-  { id: 'goats', label: 'Livestock (side asset)', account: '1450', eventType: 'asset_purchase' },
+  { id: 'bike', label: 'Vehicle (1400)', account: '1400', eventType: 'asset_purchase', asset: true },
+  { id: 'goats', label: 'Livestock (1450)', account: '1450', eventType: 'asset_purchase', asset: true },
+  { id: 'equipment', label: 'Equipment / other assets (1500)', account: '1500', eventType: 'asset_purchase', asset: true },
   { id: 'drawings', label: 'Owner Drawings (personal take-out)', account: '3100', eventType: 'drawings' },
   { id: 'personal', label: 'Personal / Unclear — Suspense for review', account: '1900', eventType: 'expense' },
 ]
 
 export default function MoneyOutForm({ onPosted }: { onPosted: () => void }) {
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
-  const [categoryId, setCategoryId] = useState(CATEGORIES[0].id)
+  const [date, setDate] = useState(todayPK)
+  const [categoryId, setCategoryId] = useState('') // no default: the type must be picked every time
   const [amount, setAmount] = useState('')
   const [description, setDescription] = useState('')
   const safe = useSafeSave()
 
-  const category = CATEGORIES.find((c) => c.id === categoryId) ?? CATEGORIES[0]
+  const category = CATEGORIES.find((c) => c.id === categoryId)
   const amountPaisa = (() => {
     const n = Number(amount)
     return Number.isFinite(n) && n > 0 ? Math.round(n * 100) : 0
   })()
-  const valid = amountPaisa > 0 && description.trim().length > 0
+  const valid = !!category && amountPaisa > 0 && description.trim().length > 0
 
-  const lines = [
-    { account: category.account, debit: amountPaisa },
-    { account: '1000', credit: amountPaisa },
-  ]
+  const lines = category
+    ? [
+        { account: category.account, debit: amountPaisa },
+        { account: '1000', credit: amountPaisa },
+      ]
+    : []
 
   function clear() {
+    setCategoryId('')
     setAmount('')
     setDescription('')
   }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
-    if (!valid) return
+    if (!valid || !category) return
     const ref = await safe.save((key) =>
       engine.postEvent({
         eventType: category.eventType,
@@ -68,14 +72,20 @@ export default function MoneyOutForm({ onPosted }: { onPosted: () => void }) {
       <form onSubmit={submit} className="space-y-5">
         <fieldset disabled={safe.locked} className="space-y-5">
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-          <Field label="Date">
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} required />
-          </Field>
+          <DateField label="Date paid" value={date} onChange={setDate} />
           <Field label="What kind of spending?">
-            <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className={inputCls}>
-              {CATEGORIES.map((c) => (
-                <option key={c.id} value={c.id}>{c.label}</option>
-              ))}
+            <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className={inputCls} required>
+              <option value="" disabled>Pick one…</option>
+              <optgroup label="Spending">
+                {CATEGORIES.filter((c) => !c.asset).map((c) => (
+                  <option key={c.id} value={c.id}>{c.label}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Something bought that keeps its value (asset)">
+                {CATEGORIES.filter((c) => c.asset).map((c) => (
+                  <option key={c.id} value={c.id}>{c.label}</option>
+                ))}
+              </optgroup>
             </select>
           </Field>
         </div>

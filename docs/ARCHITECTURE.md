@@ -327,6 +327,16 @@ unbalanced event); no negative cash day 23 Aug onward; debtors Rs 21,390; Utilit
 1,958 (−15,680); BATCH-001 15,210 → 15,078 kg; stock tie holds per account (1200 = 113,278.68,
 1210 = 92,284.50, ledger = movements).
 
+### EV-000404 — security cameras (posted 2026-09-27)
+
+EV-000404 "3 security cameras" Rs 11,297 was entered on the phone as Vehicle (1400) dated 27 Sep; the
+Money Out form had no Equipment option and the date defaulted to today. Owner-confirmed:
+**EV-000405** (27 Sep, key `3c-EV-000404-a`) Dr 1000 / Cr 1400 11,297 reverses it; **EV-000406**
+(24 Sep, key `3c-EV-000404-b`) Dr 1500 / Cr 1000 11,297, paid 24 Sep. After: cash Rs 506,148.00,
+1400 Rs 135,670.00, 1500 Rs 35,197.00, debits = credits, no negative cash day. Form fixed the same
+day: Money Out has no default type (Equipment / other assets 1500 added) and every entry form shows
+its date first, in words, with "change if not today" (Pakistan time).
+
 EV numbers 268–335 are unused: a rolled-back dry run consumed them (Postgres sequences never roll
 back). No entry was lost; the numbers are simply skipped.
 

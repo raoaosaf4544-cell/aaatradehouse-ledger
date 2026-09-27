@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { engine } from '../lib/engine'
-import { Card, Field, inputCls, JournalPreview, SectionTitle, accountName } from './ui'
+import { Card, DateField, Field, inputCls, todayPK, JournalPreview, SectionTitle, accountName } from './ui'
 import { SaveControls, useSafeSave } from './SafeSave'
 
 /**
@@ -8,7 +8,7 @@ import { SaveControls, useSafeSave } from './SafeSave'
  * Updates liquid cash and capital immediately — verified by the engine.
  */
 export default function CapitalInjectionForm({ onPosted }: { onPosted: () => void }) {
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [date, setDate] = useState(todayPK)
   const [amount, setAmount] = useState('')
   const [depositor, setDepositor] = useState('')
   const [note, setNote] = useState('')
@@ -55,9 +55,7 @@ export default function CapitalInjectionForm({ onPosted }: { onPosted: () => voi
       <form onSubmit={submit} className="space-y-5">
         <fieldset disabled={safe.locked} className="space-y-5">
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-          <Field label="Date">
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} required />
-          </Field>
+          <DateField label="Date received" value={date} onChange={setDate} />
           <Field label="Amount (PKR)">
             <input
               type="number"

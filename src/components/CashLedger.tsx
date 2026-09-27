@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { ArrowDownLeft, ArrowUpRight } from 'lucide-react'
 import { engine } from '../lib/engine'
 import type { AccountLineRow, EventRow } from '../lib/types'
-import { Badge, Card, EmptyState, ErrorBanner, Money, SectionTitle, Spinner } from './ui'
+import { Badge, Card, DateField, EmptyState, ErrorBanner, Money, SectionTitle, Spinner, todayPK } from './ui'
 import MoneyOutForm from './MoneyOutForm'
 import { SaveControls, useSafeSave } from './SafeSave'
 
@@ -144,7 +144,7 @@ export default function CashLedger() {
 }
 
 function MoneyInCard({ onPosted }: { onPosted: () => void }) {
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [date, setDate] = useState(todayPK)
   const [amount, setAmount] = useState('')
   const [description, setDescription] = useState('')
   const [toSuspense, setToSuspense] = useState(false)
@@ -196,16 +196,7 @@ function MoneyInCard({ onPosted }: { onPosted: () => void }) {
       <form onSubmit={submit} className="space-y-4">
         <fieldset disabled={safe.locked} className="space-y-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <label className="block text-sm">
-            <span className="mb-1 block font-medium text-slate-700">Date</span>
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-              required
-            />
-          </label>
+          <DateField label="Date received" value={date} onChange={setDate} />
           <label className="block text-sm">
             <span className="mb-1 block font-medium text-slate-700">Amount (PKR)</span>
             <input

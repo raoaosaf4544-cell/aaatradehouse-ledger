@@ -5,12 +5,14 @@ import { SaveControls, useSafeSave } from './SafeSave'
 import {
   Badge,
   Card,
+  DateField,
   ErrorBanner,
   Field,
   inputCls,
   JournalPreview,
   SectionTitle,
   accountName,
+  todayPK,
 } from './ui'
 
 /**
@@ -18,7 +20,7 @@ import {
  * Cr Cash-or-AP, and logs a PURCHASE_RECEIPT movement. Preview updates live.
  */
 export default function SaltPurchaseForm({ onPosted }: { onPosted: () => void }) {
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [date, setDate] = useState(todayPK)
   const [supplier, setSupplier] = useState('')
   const [products, setProducts] = useState<Product[] | null>(null)
   const [locations, setLocations] = useState<Location[] | null>(null)
@@ -101,9 +103,7 @@ export default function SaltPurchaseForm({ onPosted }: { onPosted: () => void })
         {loadError != null && <ErrorBanner error={loadError} />}
         <fieldset disabled={safe.locked} className="space-y-5">
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-          <Field label="Date">
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} required />
-          </Field>
+          <DateField label="Date paid" value={date} onChange={setDate} />
           <Field label="Supplier">
             <input
               type="text"

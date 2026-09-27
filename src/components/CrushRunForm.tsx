@@ -6,12 +6,14 @@ import { SaveControls, useSafeSave } from './SafeSave'
 import {
   Badge,
   Card,
+  DateField,
   ErrorBanner,
   Field,
   inputCls,
   JournalPreview,
   SectionTitle,
   accountName,
+  todayPK,
 } from './ui'
 
 /**
@@ -27,7 +29,7 @@ type GradeRow = { key: number; productCode: string; qtyKg: string }
 let rowKey = 1
 
 export default function CrushRunForm({ onPosted }: { onPosted: () => void }) {
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [date, setDate] = useState(todayPK)
   const [batches, setBatches] = useState<BatchRow[] | null>(null)
   const [products, setProducts] = useState<Product[] | null>(null)
   const [inputBatch, setInputBatch] = useState('')
@@ -159,9 +161,7 @@ export default function CrushRunForm({ onPosted }: { onPosted: () => void }) {
         {loadError != null && <ErrorBanner error={loadError} />}
         <fieldset disabled={safe.locked} className="space-y-5">
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-          <Field label="Date">
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} required />
-          </Field>
+          <DateField label="Date" value={date} onChange={setDate} />
           <Field label="Crush which batch?">
             <select value={inputBatch} onChange={(e) => setInputBatch(e.target.value)} className={inputCls} required>
               <option value="" disabled>Choose a batch with stock…</option>

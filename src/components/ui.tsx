@@ -129,6 +129,31 @@ export function Field({
   )
 }
 
+/** Today's date (YYYY-MM-DD) in Pakistan time — UTC would give yesterday between midnight and 5 am. */
+export const todayPK = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Karachi' })
+
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+/** "2026-09-27" → "Sun 27 Sep 2026" */
+export function dateInWords(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number)
+  if (!y || !m || !d) return ''
+  return `${DAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]} ${d} ${MONTHS[m - 1]} ${y}`
+}
+
+/** The date box every entry form puts first: label, the date in words, and "change if not today". */
+export function DateField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-base font-semibold text-slate-700">{label}</span>
+      <input type="date" value={value} onChange={(e) => onChange(e.target.value)} className={inputCls} required />
+      <span className="mt-1.5 block text-sm text-slate-600">
+        <span className="font-semibold text-slate-900">{dateInWords(value)}</span> — change if not today
+      </span>
+    </label>
+  )
+}
+
 export const inputCls =
   'w-full rounded-xl border-2 border-slate-300 bg-white px-4 py-3 text-lg text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-100'
 
@@ -237,6 +262,7 @@ export const ACCOUNT_NAMES: Record<string, string> = {
   '1230': 'Inventory — Packaging Material',
   '1400': 'Vehicle (Motorcycle)',
   '1450': 'Livestock — Side Activity (Goats)',
+  '1500': 'Other Fixed Assets',
   '1900': 'Suspense / Unclassified',
   '2000': 'Accounts Payable — Trade',
   '2100': 'Accrued Expenses',
