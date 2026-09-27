@@ -6,13 +6,30 @@ import { useSyncExternalStore } from 'react'
  * users: the cache has an owner (the signed-in auth user id) and is wiped on sign-out.
  */
 const PREFIX = 'ledger-cache:'
+/** Everything this login remembers lives under ONE storage key, capped in entries and size. */
+export const MAX_ENTRIES = 60
+export const MAX_CHARS = 1_500_000 // phone browsers allow ~5 MB per site; stay far below it
 let owner: string | null = null
 let usingCache = false
 const listeners = new Set<() => void>()
 const emit = () => listeners.forEach((l) => l())
 
+type Entry = { t: number; s: string } // t = last written (order), s = the value as JSON text
+let store: Record<string, Entry> | null = null // in-memory copy of this owner's storage key
+let clock = 0
+
+const storeKey = () => `${PREFIX}v3:${owner}`
+
+/** Old copies (v1/v2 one-key-per-read, other logins) are deleted as soon as a login is known. */
 export function setCacheOwner(authUserId: string | null) {
   owner = authUserId
+  store = null
+  if (!owner) return
+  try {
+    for (const k of Object.keys(localStorage)) if (k.startsWith(PREFIX) && k !== storeKey()) localStorage.removeItem(k)
+  } catch {
+    // storage unavailable: nothing to tidy
+  }
 }
 
 export function clearOfflineCache() {
@@ -22,31 +39,80 @@ export function clearOfflineCache() {
     // storage unavailable: nothing was cached
   }
   owner = null
+  store = null
   markUsingCache(false)
 }
 
-// v2: Maps are stored as tagged entry lists (plain JSON turns a Map into {}). v1 keys are never read
-// back, and clearOfflineCache still wipes them because they share PREFIX.
-const key = (name: string) => `${PREFIX}v2:${owner}:${name}`
+// Maps are stored as tagged entry lists (plain JSON turns a Map into {}).
 const MAP_TAG = '__map__'
 const toJson = (_: string, v: unknown) => (v instanceof Map ? { [MAP_TAG]: [...v] } : v)
 const fromJson = (_: string, v: unknown) =>
   v && typeof v === 'object' && MAP_TAG in v ? new Map((v as Record<string, [unknown, unknown][]>)[MAP_TAG]) : v
 
+function load(): Record<string, Entry> {
+  if (store) return store
+  try {
+    const raw = localStorage.getItem(storeKey())
+    store = raw ? (JSON.parse(raw) as Record<string, Entry>) : {}
+  } catch {
+    store = {}
+  }
+  for (const e of Object.values(store)) clock = Math.max(clock, e.t)
+  return store
+}
+
+/** Drop the oldest entries until the cache fits both caps. */
+function prune(s: Record<string, Entry>) {
+  const names = Object.keys(s).sort((a, b) => s[a].t - s[b].t)
+  let chars = names.reduce((n, k) => n + k.length + s[k].s.length, 0)
+  while (names.length > 0 && (names.length > MAX_ENTRIES || chars > MAX_CHARS)) {
+    const k = names.shift()!
+    chars -= k.length + s[k].s.length
+    delete s[k]
+  }
+}
+
+function persist(s: Record<string, Entry>) {
+  try {
+    localStorage.setItem(storeKey(), JSON.stringify(s))
+  } catch {
+    // storage full: keep the newest half, and if even that fails keep nothing (never grow without limit)
+    const names = Object.keys(s).sort((a, b) => s[a].t - s[b].t)
+    for (const k of names.slice(0, Math.ceil(names.length / 2))) delete s[k]
+    try {
+      localStorage.setItem(storeKey(), JSON.stringify(s))
+    } catch {
+      for (const k of Object.keys(s)) delete s[k]
+      try {
+        localStorage.removeItem(storeKey())
+      } catch {
+        // storage unavailable
+      }
+    }
+  }
+}
+
 export function remember(name: string, value: unknown) {
   if (!owner) return
+  let text: string
   try {
-    localStorage.setItem(key(name), JSON.stringify(value, toJson))
+    text = JSON.stringify(value, toJson)
   } catch {
-    // storage full or blocked: offline view just has less to show
+    return
   }
+  if (text === undefined || text.length > MAX_CHARS) return // too big to keep: show it live only
+  const s = load()
+  s[name] = { t: ++clock, s: text }
+  prune(s)
+  persist(s)
 }
 
 export function recall<T>(name: string): T | undefined {
   if (!owner) return undefined
+  const e = load()[name]
+  if (!e) return undefined
   try {
-    const v = localStorage.getItem(key(name))
-    return v === null ? undefined : (JSON.parse(v, fromJson) as T)
+    return JSON.parse(e.s, fromJson) as T
   } catch {
     return undefined
   }
