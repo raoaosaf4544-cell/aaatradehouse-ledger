@@ -1,35 +1,26 @@
 import { useEffect, useState } from 'react'
 import { ArrowDownLeft, ArrowUpRight } from 'lucide-react'
 import { engine } from '../lib/engine'
-import type { AccountLineRow, EventRow } from '../lib/types'
-import { Badge, Card, DateField, EmptyState, ErrorBanner, Money, SectionTitle, Spinner, todayPK } from './ui'
+import type { AccountTotals } from '../lib/types'
+import { Badge, Card, DateField, EmptyState, ErrorBanner, Money, SectionTitle, ShowMore, Spinner, todayPK, usePaged } from './ui'
 import MoneyOutForm from './MoneyOutForm'
 import { SaveControls, useSafeSave } from './SafeSave'
 
 export default function CashLedger() {
-  const [events, setEvents] = useState<EventRow[] | null>(null)
-  const [error, setError] = useState<unknown>(null)
-  const [suspenseLines, setSuspenseLines] = useState<AccountLineRow[] | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
+  const events = usePaged((limit, offset) => engine.listEvents(limit, offset), reloadKey)
+  const suspenseLines = usePaged((limit, offset) => engine.accountLines('1900', limit, offset), reloadKey)
+  const [suspenseTotals, setSuspenseTotals] = useState<AccountTotals | null>(null)
   const [suspenseOpen, setSuspenseOpen] = useState(false)
 
-  async function load() {
-    try {
-      setEvents(await engine.listEvents(100))
-      engine
-        .accountLines('1900')
-        .then(setSuspenseLines)
-        .catch(() => setSuspenseLines([]))
-    } catch (e) {
-      setError(e)
-    }
-  }
-
   useEffect(() => {
-    load()
-  }, [])
+    engine.accountTotals('1900').then(setSuspenseTotals).catch(() => setSuspenseTotals(null))
+  }, [reloadKey])
 
-  const suspenseDr = (suspenseLines ?? []).reduce((s, l) => s + l.debit_paisa, 0)
-  const suspenseCr = (suspenseLines ?? []).reduce((s, l) => s + l.credit_paisa, 0)
+  const load = () => setReloadKey((k) => k + 1)
+  const error = events.error
+  const suspenseDr = suspenseTotals?.debit_paisa ?? 0
+  const suspenseCr = suspenseTotals?.credit_paisa ?? 0
 
   return (
     <div className="space-y-6">
@@ -47,7 +38,7 @@ export default function CashLedger() {
         >
           <SectionTitle>Unclassified (Suspense) — every line the books could not label yet</SectionTitle>
           <Badge tone={suspenseDr - suspenseCr !== 0 ? 'amber' : 'slate'}>
-            {suspenseLines === null ? 'loading…' : `${suspenseLines.length} lines`}
+            {suspenseTotals === null ? 'loading…' : `${suspenseTotals.line_count} lines`}
           </Badge>
         </button>
         <p className="mb-3 text-xs text-slate-500">
@@ -56,9 +47,9 @@ export default function CashLedger() {
           They stay here until you tell us what each one was — nothing is hidden inside the total.
         </p>
         {suspenseOpen &&
-          (!suspenseLines ? (
+          (!suspenseLines.rows ? (
             <Spinner />
-          ) : suspenseLines.length === 0 ? (
+          ) : suspenseLines.rows.length === 0 ? (
             <EmptyState>Nothing unclassified — every rupee is labelled.</EmptyState>
           ) : (
             <div className="max-h-96 overflow-y-auto rounded-lg border border-slate-200">
@@ -73,7 +64,7 @@ export default function CashLedger() {
                   </tr>
                 </thead>
                 <tbody>
-                  {suspenseLines.map((l) => (
+                  {suspenseLines.rows.map((l) => (
                     <tr key={`${l.event_id}-${l.entry_seq}`} className="border-b border-slate-100 last:border-0">
                       <td className="whitespace-nowrap px-3 py-1.5 text-slate-600">{l.occurred_on}</td>
                       <td className="px-3 py-1.5 font-mono">{l.event_ref}</td>
@@ -95,13 +86,14 @@ export default function CashLedger() {
               </table></div>
             </div>
           ))}
+        {suspenseOpen && <ShowMore paged={suspenseLines} />}
       </Card>
 
       <Card>
         <SectionTitle>Recent events</SectionTitle>
-        {!events ? (
+        {!events.rows ? (
           <Spinner />
-        ) : events.length === 0 ? (
+        ) : events.rows.length === 0 ? (
           <EmptyState>No events recorded yet.</EmptyState>
         ) : (
           <div className="overflow-x-auto">
@@ -115,7 +107,7 @@ export default function CashLedger() {
                 </tr>
               </thead>
               <tbody>
-                {events.slice(0, 50).map((e) => (
+                {events.rows.map((e) => (
                   <tr key={e.id} className="border-b border-slate-100">
                     <td className="whitespace-nowrap py-2 text-slate-600">{e.occurred_on}</td>
                     <td className="py-2 font-mono text-xs">{e.event_ref}</td>
@@ -138,6 +130,7 @@ export default function CashLedger() {
             </table>
           </div>
         )}
+        <ShowMore paged={events} />
       </Card>
     </div>
   )

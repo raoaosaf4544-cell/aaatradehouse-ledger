@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { HandCoins } from 'lucide-react'
 import { engine } from '../lib/engine'
-import type { DebtorRow, SaleRow, DispatchAllocationRow } from '../lib/types'
+import type { DebtorRow, DispatchAllocationRow, SalesTotals } from '../lib/types'
 import { gramsToKg } from '../lib/types'
 import { SaveControls, SavedBanner, useSafeSave } from './SafeSave'
 import {
@@ -13,9 +13,11 @@ import {
   Field,
   inputCls,
   SectionTitle,
+  ShowMore,
   Spinner,
   StatCard,
   todayPK,
+  usePaged,
 } from './ui'
 
 /**
@@ -25,8 +27,9 @@ import {
  */
 export default function Debtors({ onPosted }: { onPosted: () => void }) {
   const [debtors, setDebtors] = useState<DebtorRow[] | null>(null)
-  const [sales, setSales] = useState<SaleRow[] | null>(null)
-  const [allocs, setAllocs] = useState<DispatchAllocationRow[] | null>(null)
+  const [totals, setTotals] = useState<SalesTotals | null>(null)
+  const sales = usePaged((limit, offset) => engine.sales(limit, offset))
+  const [allocsBySale, setAllocsBySale] = useState<Record<string, DispatchAllocationRow[]>>({})
   const [error, setError] = useState<unknown>(null)
   const [expanded, setExpanded] = useState<string | null>(null)
   const [payFor, setPayFor] = useState<string | null>(null)
@@ -36,29 +39,30 @@ export default function Debtors({ onPosted }: { onPosted: () => void }) {
   const paySafe = useSafeSave()
 
   useEffect(() => {
-    Promise.all([engine.debtors(), engine.sales(), engine.dispatchAllocations()])
-      .then(([d, s, a]) => {
+    Promise.all([engine.debtors(), engine.salesTotals()])
+      .then(([d, t]) => {
         setDebtors(d)
-        setSales(s)
-        setAllocs(a)
+        setTotals(t)
       })
       .catch(setError)
   }, [])
 
   const totalOutstanding = (debtors ?? []).reduce((s, d) => s + Math.max(d.outstanding_paisa, 0), 0)
-  const totalRevenue = (sales ?? []).reduce((s, x) => s + x.total_revenue_paisa, 0)
-  const totalCogs = (sales ?? []).reduce((s, x) => s + x.cogs_paisa, 0)
-  const totalProfit = totalRevenue - totalCogs
+  // All invoices, totalled by the database. Margin only over fully dispatched invoices (their cost is known).
+  const totalRevenue = totals?.revenue_paisa ?? 0
+  const marginBase = totals?.dispatched_revenue_paisa ?? 0
+  const totalProfit = marginBase - (totals?.dispatched_cogs_paisa ?? 0)
 
-  const allocsBySale = useMemo(() => {
-    const m = new Map<string, DispatchAllocationRow[]>()
-    for (const a of allocs ?? []) {
-      const list = m.get(a.sale_ref) ?? []
-      list.push(a)
-      m.set(a.sale_ref, list)
+  async function toggleInvoice(saleRef: string) {
+    setExpanded(expanded === saleRef ? null : saleRef)
+    if (allocsBySale[saleRef]) return
+    try {
+      const rows = await engine.dispatchAllocations(saleRef)
+      setAllocsBySale((m) => ({ ...m, [saleRef]: rows }))
+    } catch {
+      // no signal: the invoice opens without its batch detail
     }
-    return m
-  }, [allocs])
+  }
 
   function closePayment() {
     setPayFor(null)
@@ -83,9 +87,10 @@ export default function Debtors({ onPosted }: { onPosted: () => void }) {
     if (res === null) return
     closePayment()
     try {
-      const [d, s] = await Promise.all([engine.debtors(), engine.sales()])
+      const [d, t] = await Promise.all([engine.debtors(), engine.salesTotals()])
       setDebtors(d)
-      setSales(s)
+      setTotals(t)
+      sales.reload()
     } catch {
       // saved already; the lists refresh on the next visit
     }
@@ -93,7 +98,7 @@ export default function Debtors({ onPosted }: { onPosted: () => void }) {
   }
 
   if (error) return <ErrorBanner error={error} />
-  if (!debtors || !sales || !allocs) return <Spinner />
+  if (!debtors || !totals) return <Spinner />
 
   return (
     <div className="space-y-6">
@@ -106,10 +111,14 @@ export default function Debtors({ onPosted }: { onPosted: () => void }) {
         <StatCard label="Total receivable" tone={totalOutstanding > 0 ? 'amber' : 'emerald'} sub="Money customers still owe">
           PKR {(totalOutstanding / 100).toLocaleString()}
         </StatCard>
-        <StatCard label="Revenue (all invoices)" tone="blue" sub={`${sales.length} invoice(s)`}>
+        <StatCard label="Revenue (all invoices)" tone="blue" sub={`${totals.invoices} invoice(s)`}>
           PKR {(totalRevenue / 100).toLocaleString()}
         </StatCard>
-        <StatCard label="Gross profit" tone="emerald" sub={totalRevenue > 0 ? `${((totalProfit / totalRevenue) * 100).toFixed(1)}% margin on dispatched goods` : '—'}>
+        <StatCard
+          label="Gross profit (sales − salt cost)"
+          tone="emerald"
+          sub={marginBase > 0 ? `${((totalProfit / marginBase) * 100).toFixed(1)}% of sales — before expenses` : '—'}
+        >
           PKR {(totalProfit / 100).toLocaleString()}
         </StatCard>
       </div>
@@ -198,17 +207,20 @@ export default function Debtors({ onPosted }: { onPosted: () => void }) {
 
       <Card>
         <SectionTitle>Invoices</SectionTitle>
-        {sales.length === 0 ? (
+        {sales.error != null && <ErrorBanner error={sales.error} />}
+        {!sales.rows ? (
+          <Spinner />
+        ) : sales.rows.length === 0 ? (
           <EmptyState>No invoices yet — record your first sale from the Record hub.</EmptyState>
         ) : (
           <div className="space-y-3">
-            {sales.map((s) => {
+            {sales.rows.map((s) => {
               const isOpen = expanded === s.sale_ref
-              const saleAllocs = allocsBySale.get(s.sale_ref) ?? []
+              const saleAllocs = allocsBySale[s.sale_ref] ?? []
               return (
                 <div key={s.sale_ref} className="rounded-xl border border-slate-200">
                   <button
-                    onClick={() => setExpanded(isOpen ? null : s.sale_ref)}
+                    onClick={() => toggleInvoice(s.sale_ref)}
                     className="flex w-full flex-wrap items-center justify-between gap-3 px-4 py-3 text-left hover:bg-slate-50"
                   >
                     <div className="min-w-0">
@@ -288,6 +300,7 @@ export default function Debtors({ onPosted }: { onPosted: () => void }) {
             })}
           </div>
         )}
+        <ShowMore paged={sales} />
       </Card>
     </div>
   )

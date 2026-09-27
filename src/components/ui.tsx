@@ -1,6 +1,6 @@
-import React from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { paisaToPkr, gramsToKg } from '../lib/types'
-import { InvariantError } from '../lib/engine'
+import { InvariantError, PAGE_SIZE } from '../lib/engine'
 
 export function Money({ paisa, className = '' }: { paisa: number; className?: string }) {
   const negative = paisa < 0
@@ -285,4 +285,56 @@ export const ACCOUNT_NAMES: Record<string, string> = {
 
 export function accountName(code: string): string {
   return ACCOUNT_NAMES[code] ?? `Account ${code}`
+}
+
+/* ---------- paged lists: never load "everything" (the API returns at most 1000 rows) ---------- */
+
+/** Loads a list one page at a time. `resetKey` change = start again from the first page. */
+export function usePaged<T>(fetchPage: (limit: number, offset: number) => Promise<T[]>, resetKey: unknown = null) {
+  const [rows, setRows] = useState<T[] | null>(null)
+  const [hasMore, setHasMore] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<unknown>(null)
+  const fetchRef = useRef(fetchPage)
+  fetchRef.current = fetchPage
+  const rowsRef = useRef<T[] | null>(null)
+
+  const load = useCallback(async (reset: boolean) => {
+    setBusy(true)
+    setError(null)
+    try {
+      const offset = reset ? 0 : (rowsRef.current?.length ?? 0)
+      const page = await fetchRef.current(PAGE_SIZE, offset)
+      const next = reset || !rowsRef.current ? page : [...rowsRef.current, ...page]
+      rowsRef.current = next
+      setRows(next)
+      setHasMore(page.length === PAGE_SIZE)
+    } catch (e) {
+      setError(e)
+    } finally {
+      setBusy(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    rowsRef.current = null
+    setRows(null)
+    load(true)
+  }, [load, resetKey])
+
+  return { rows, hasMore, busy, error, more: () => load(false), reload: () => load(true) }
+}
+
+export function ShowMore({ paged }: { paged: { hasMore: boolean; busy: boolean; more: () => void } }) {
+  if (!paged.hasMore) return null
+  return (
+    <button
+      type="button"
+      onClick={paged.more}
+      disabled={paged.busy}
+      className="mt-3 min-h-11 w-full rounded-xl border-2 border-slate-300 px-4 py-3 text-base font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+    >
+      {paged.busy ? 'Loading…' : 'Show more'}
+    </button>
+  )
 }

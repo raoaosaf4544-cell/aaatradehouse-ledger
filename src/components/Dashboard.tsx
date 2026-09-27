@@ -1,42 +1,19 @@
 import { Fragment, useEffect, useState } from 'react'
 import { Hammer, Landmark, PlusCircle, RefreshCw, ShieldAlert, ShieldCheck, ShoppingCart } from 'lucide-react'
-import { engine, InvariantError } from '../lib/engine'
-import { supabase } from '../lib/supabase'
-import type { AccountBalance, DebtorRow, EventRow, LedgerEntryRow, StockOnHand } from '../lib/types'
-import { Card, ErrorBanner, Kg, Money, SectionTitle, Spinner, StatCard } from './ui'
+import { engine } from '../lib/engine'
+import type { AccountBalance, DebtorRow, LedgerEntryRow, LedgerHealth, StockOnHand } from '../lib/types'
+import { Card, ErrorBanner, Kg, Money, SectionTitle, ShowMore, Spinner, StatCard, usePaged } from './ui'
 
-/** Dashboard: every number read from derived database views. No client-side math. */
-
-/**
- * Audit-trail baselines (paisa) as of the 2026-09-19 full audit.
- *
- * 8,132,400 = verified Excel-side cash baseline. Reconciliation identity:
- *   live Cash (1000) − Σ cash effect of every NON-excel event = this baseline.
- * Derivation: Phase 0 baseline 7,704,400, then audit corrections to EXCEL-import
- * events only (all documented in app.events, source='correction' / deleted):
- *   −49,000  three duplicate UNCLEAR income events deleted (Rs 50/170/270 —
- *            duplicates of INV-00043/44/45, already booked through the app)
- *   +477,000 7 Sep "Kulb" page-total misread corrected (Rs 5,300 booked → Rs 530;
- *            page control is 1,080 = 150+200+100+100+530)
- *   = 8,132,400. The 8 Sep correction events are app-posted expenses and are
- *   counted by the live delta below, NOT here.
- */
-const EXPECTED_CASH_PAISA = 8_132_400
-const EXPECTED_INV_PAISA = 11_427_000
+/** Dashboard: every number read from database views. No client-side totals over long lists. */
 
 type Snapshot = {
   cash: AccountBalance | undefined
   vehicle: AccountBalance | undefined
-  livestock: AccountBalance | undefined
   suspense: AccountBalance | undefined
   debtors: DebtorRow[]
-  capital: AccountBalance | undefined
   inventoryTotalPaisa: number
   stock: StockOnHand[]
-  events: EventRow[]
-  lines: Map<number, LedgerEntryRow[]>
-  expectedCashPaisa: number
-  expectedInvPaisa: number
+  health: LedgerHealth
 }
 
 export default function Dashboard({ go }: { go?: (tab: string) => void }) {
@@ -44,40 +21,24 @@ export default function Dashboard({ go }: { go?: (tab: string) => void }) {
   const [error, setError] = useState<unknown>(null)
   const [busy, setBusy] = useState(false)
   const [expanded, setExpanded] = useState<number | null>(null)
+  const [lines, setLines] = useState<Record<number, LedgerEntryRow[]>>({})
+  const events = usePaged((limit, offset) => engine.listEvents(limit, offset))
 
   async function load() {
     setBusy(true)
     setError(null)
     try {
-      const [balances, stock, events, debtors] = await Promise.all([
+      const [balances, stock, debtors, health] = await Promise.all([
         engine.accountBalances(),
         engine.stockOnHand(),
-        engine.listEvents(1000),
         engine.debtors(),
+        engine.ledgerHealth(),
       ])
       const find = (code: string) => balances.find((b) => b.code === code)
       const inventoryTotalPaisa = balances
-        .filter((b) => ['1200', '1210', '1220', '1230', '1300', '1310'].includes(b.code))
+        .filter((b) => ['1200', '1210', '1220', '1230'].includes(b.code))
         .reduce((s, b) => s + b.balance_paisa, 0)
-      const lines = await engine.eventLines(events.map((e) => e.id))
-
-      // Reconciliation: expected = Excel baseline + net effect of every event posted
-      // through the app. This stays a live integrity check after real operations begin.
-      const INV_ACCOUNTS = new Set(['1200', '1210', '1220', '1230', '1300', '1310'])
-      let cashDelta = 0
-      let invDelta = 0
-      for (const e of events) {
-        if (e.source === 'excel_import') continue
-        for (const l of lines.get(e.id) ?? []) {
-          const net = l.debit_paisa - l.credit_paisa
-          if (l.account_code === '1000') cashDelta += net
-          if (INV_ACCOUNTS.has(l.account_code)) invDelta += net
-        }
-      }
-      const expectedCashPaisa = EXPECTED_CASH_PAISA + cashDelta
-      const expectedInvPaisa = EXPECTED_INV_PAISA + invDelta
-
-      setSnap({ cash: find('1000'), vehicle: find('1400'), livestock: find('1450'), suspense: find('1900'), capital: find('3000'), inventoryTotalPaisa, stock, events, lines, expectedCashPaisa, expectedInvPaisa, debtors })
+      setSnap({ cash: find('1000'), vehicle: find('1400'), suspense: find('1900'), inventoryTotalPaisa, stock, debtors, health })
     } catch (e) {
       setError(e)
     } finally {
@@ -89,13 +50,24 @@ export default function Dashboard({ go }: { go?: (tab: string) => void }) {
     load()
   }, [])
 
+  async function toggle(id: number) {
+    setExpanded(expanded === id ? null : id)
+    if (lines[id]) return
+    try {
+      const m = await engine.eventLines([id])
+      setLines((l) => ({ ...l, [id]: m.get(id) ?? [] }))
+    } catch {
+      // no signal: the row simply stays without its lines
+    }
+  }
+
   if (error)
     return (
       <div>
         <ErrorBanner error={error} />
         <button
           onClick={load}
-          className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
+          className="min-h-11 rounded-lg bg-slate-900 px-4 py-2 text-base font-medium text-white hover:bg-slate-700"
         >
           Retry
         </button>
@@ -103,8 +75,11 @@ export default function Dashboard({ go }: { go?: (tab: string) => void }) {
     )
   if (!snap) return <Spinner />
 
-  const cashOk = snap.cash?.balance_paisa === snap.expectedCashPaisa
-  const invOk = snap.inventoryTotalPaisa === snap.expectedInvPaisa
+  const h = snap.health
+  const balanced = h.total_debit_paisa === h.total_credit_paisa
+  const stockTies = h.stock_mismatched_accounts === 0 && h.stock_ledger_paisa === h.stock_movements_paisa
+  const cashNeverNegative = h.negative_cash_days === 0
+  const allOk = balanced && stockTies && cashNeverNegative
 
   return (
     <div className="space-y-6">
@@ -119,7 +94,7 @@ export default function Dashboard({ go }: { go?: (tab: string) => void }) {
             <button
               key={a.id}
               onClick={() => go(a.id)}
-              className={`flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left text-sm font-semibold text-slate-700 shadow-sm transition ${a.cls}`}
+              className={`flex min-h-11 items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left text-sm font-semibold text-slate-700 shadow-sm transition ${a.cls}`}
             >
               <a.icon className="h-5 w-5 shrink-0 text-slate-500" />
               {a.label}
@@ -129,7 +104,7 @@ export default function Dashboard({ go }: { go?: (tab: string) => void }) {
       )}
 
       {busy && (
-        <div className="flex items-center gap-2 text-xs text-slate-400">
+        <div className="flex items-center gap-2 text-sm text-slate-500">
           <RefreshCw className="h-3 w-3 animate-spin" /> refreshing…
         </div>
       )}
@@ -137,23 +112,19 @@ export default function Dashboard({ go }: { go?: (tab: string) => void }) {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Cash on Hand"
-          sub={
-            cashOk
-              ? '✓ reconciles: Excel baseline + every entry posted here'
-              : `reconciliation FAILED — expected PKR ${(snap.expectedCashPaisa / 100).toLocaleString()}`
-          }
-          tone={cashOk ? 'emerald' : 'rose'}
+          sub={cashNeverNegative ? '✓ never below zero on any day' : `went below zero on ${h.negative_cash_days} day(s) — check back-dated entries`}
+          tone={cashNeverNegative ? 'emerald' : 'rose'}
         >
           <Money paisa={snap.cash?.balance_paisa ?? 0} />
         </StatCard>
         <StatCard
           label="Inventory Value"
-          sub={invOk ? '✓ reconciles with batch movements' : 'reconciliation FAILED'}
-          tone={invOk ? 'emerald' : 'rose'}
+          sub={stockTies ? '✓ matches the batch stock records' : 'does NOT match the batch stock records'}
+          tone={stockTies ? 'emerald' : 'rose'}
         >
           <Money paisa={snap.inventoryTotalPaisa} />
         </StatCard>
-        <StatCard label="Vehicle (side asset)" sub="quarantined from salt COGS" tone="blue">
+        <StatCard label="Vehicle (side asset)" sub="kept out of salt cost" tone="blue">
           <Money paisa={snap.vehicle?.balance_paisa ?? 0} />
         </StatCard>
         <StatCard
@@ -194,7 +165,7 @@ export default function Dashboard({ go }: { go?: (tab: string) => void }) {
             {go && (
               <button
                 onClick={() => go('debtors')}
-                className="mt-3 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
+                className="mt-3 min-h-11 rounded-lg bg-slate-900 px-4 py-2 text-base font-medium text-white hover:bg-slate-700"
               >
                 Open Debtors &amp; Sales — collect payments
               </button>
@@ -204,7 +175,7 @@ export default function Dashboard({ go }: { go?: (tab: string) => void }) {
       </Card>
 
       <Card>
-        <SectionTitle>Stock on hand (derived from append-only movements)</SectionTitle>
+        <SectionTitle>Stock on hand (from the batch stock records)</SectionTitle>
         {snap.stock.length === 0 ? (
           <div className="text-sm text-slate-500">No stock recorded yet.</div>
         ) : (
@@ -238,77 +209,87 @@ export default function Dashboard({ go }: { go?: (tab: string) => void }) {
       </Card>
 
       <Card>
-        <SectionTitle>Recent events — click a row to see its exact ledger lines</SectionTitle>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
-                <th className="pb-2">Date</th>
-                <th className="pb-2">Ref</th>
-                <th className="pb-2">Type</th>
-                <th className="pb-2">Description</th>
-                <th className="pb-2 text-right">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {snap.events.map((e) => (
-                <Fragment key={e.id}>
-                  <tr
-                    key={e.id}
-                    onClick={() => setExpanded(expanded === e.id ? null : e.id)}
-                    className="cursor-pointer border-b border-slate-100 hover:bg-slate-50"
-                  >
-                    <td className="py-2 whitespace-nowrap text-slate-600">{e.occurred_on}</td>
-                    <td className="py-2 font-mono text-xs">{e.event_ref}</td>
-                    <td className="py-2">
-                      <TypeBadge type={e.event_type} />
-                    </td>
-                    <td className="max-w-[28rem] truncate py-2" title={e.description}>
-                      {e.description}
-                    </td>
-                    <td className="py-2 text-right font-mono tabular-nums">
-                      {paisa(e.total_paisa)}
-                    </td>
-                  </tr>
-                  {expanded === e.id && (
-                    <tr className="border-b border-slate-100 bg-slate-50/60">
-                      <td colSpan={5} className="px-4 py-3">
-                        <div className="space-y-1">
-                          {(snap.lines.get(e.id) ?? []).map((l) => (
-                            <div key={l.id} className="flex justify-between text-xs">
-                              <span className="font-mono">
-                                {l.account_code} {l.account_name}
-                              </span>
-                              <span className="font-mono tabular-nums">
-                                {l.debit_paisa > 0 ? `Dr ${paisa(l.debit_paisa)}` : `Cr ${paisa(l.credit_paisa)}`}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
+        <SectionTitle>Recent entries — tap one to see its exact ledger lines</SectionTitle>
+        {events.error != null && <ErrorBanner error={events.error} />}
+        {!events.rows ? (
+          <Spinner />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
+                  <th className="pb-2">Date</th>
+                  <th className="pb-2">Ref</th>
+                  <th className="pb-2">Type</th>
+                  <th className="pb-2">Description</th>
+                  <th className="pb-2 text-right">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {events.rows.map((e) => (
+                  <Fragment key={e.id}>
+                    <tr
+                      onClick={() => toggle(e.id)}
+                      className="cursor-pointer border-b border-slate-100 hover:bg-slate-50"
+                    >
+                      <td className="py-3 whitespace-nowrap text-slate-600">{e.occurred_on}</td>
+                      <td className="py-3 font-mono text-xs">{e.event_ref}</td>
+                      <td className="py-3">
+                        <TypeBadge type={e.event_type} />
+                      </td>
+                      <td className="max-w-[28rem] truncate py-3" title={e.description}>
+                        {e.description}
+                      </td>
+                      <td className="py-3 text-right font-mono tabular-nums">
+                        {paisa(e.total_paisa)}
                       </td>
                     </tr>
-                  )}
-                </Fragment>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                    {expanded === e.id && (
+                      <tr className="border-b border-slate-100 bg-slate-50/60">
+                        <td colSpan={5} className="px-4 py-3">
+                          {!lines[e.id] ? (
+                            <Spinner label="Loading lines…" />
+                          ) : (
+                            <div className="space-y-1">
+                              {lines[e.id].map((l) => (
+                                <div key={l.id} className="flex justify-between text-sm">
+                                  <span className="font-mono">
+                                    {l.account_code} {l.account_name}
+                                  </span>
+                                  <span className="font-mono tabular-nums">
+                                    {l.debit_paisa > 0 ? `Dr ${paisa(l.debit_paisa)}` : `Cr ${paisa(l.credit_paisa)}`}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <ShowMore paged={events} />
       </Card>
 
       <Card>
         <div className="flex items-start gap-3">
-          {cashOk && invOk ? (
+          {allOk ? (
             <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
           ) : (
             <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-rose-600" />
           )}
-          <div className="text-sm text-slate-600">
-            <span className="font-semibold text-slate-800">Ledger integrity: </span>
-            Cash {cashOk ? 'reconciles exactly' : 'does NOT reconcile'} with the Excel baseline of
-            PKR 77,044.00 plus every entry posted through this app. Inventory{' '}
-            {invOk ? 'reconciles exactly' : 'does NOT reconcile'} with BATCH-001 (PKR 114,270.00)
-            plus all purchases and processing runs. Every figure on this page is computed by the
-            database from the append-only ledgers — nothing is hardcoded in the app.
+          <div className="space-y-1 text-sm text-slate-600">
+            <div className="font-semibold text-slate-800">Checks the database runs on the whole ledger</div>
+            <div>{balanced ? '✓' : '✗'} Every debit has an equal credit (debits = credits).</div>
+            <div>{stockTies ? '✓' : '✗'} Stock value in the ledger equals the value of the batch stock records.</div>
+            <div>
+              {cashNeverNegative ? '✓' : '✗'} Cash never went below zero on any day
+              {h.lowest_cash_paisa != null && <> (lowest: <Money paisa={h.lowest_cash_paisa} />)</>}.
+            </div>
           </div>
         </div>
       </Card>

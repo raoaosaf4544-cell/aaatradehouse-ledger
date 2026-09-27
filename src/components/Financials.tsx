@@ -1,8 +1,8 @@
 import { Fragment, useEffect, useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { engine } from '../lib/engine'
-import type { AccountBalance, AccountLineRow } from '../lib/types'
-import { Card, ErrorBanner, Money, SectionTitle, Spinner, StatCard } from './ui'
+import type { AccountBalance, AccountTotals } from '../lib/types'
+import { Card, ErrorBanner, Money, SectionTitle, ShowMore, Spinner, StatCard, usePaged } from './ui'
 
 const GROUP_ORDER: Array<AccountBalance['type']> = ['asset', 'liability', 'equity', 'income', 'expense']
 
@@ -23,8 +23,6 @@ export default function Financials() {
   const [balances, setBalances] = useState<AccountBalance[] | null>(null)
   const [error, setError] = useState<unknown>(null)
   const [openCode, setOpenCode] = useState<string | null>(null)
-  const [linesByCode, setLinesByCode] = useState<Record<string, AccountLineRow[]>>({})
-  const [loadingCode, setLoadingCode] = useState<string | null>(null)
 
   useEffect(() => {
     engine
@@ -33,23 +31,8 @@ export default function Financials() {
       .catch(setError)
   }, [])
 
-  async function toggle(code: string) {
-    if (openCode === code) {
-      setOpenCode(null)
-      return
-    }
-    setOpenCode(code)
-    if (!linesByCode[code]) {
-      setLoadingCode(code)
-      try {
-        const rows = await engine.accountLines(code)
-        setLinesByCode((m) => ({ ...m, [code]: rows }))
-      } catch {
-        setLinesByCode((m) => ({ ...m, [code]: [] }))
-      } finally {
-        setLoadingCode(null)
-      }
-    }
+  function toggle(code: string) {
+    setOpenCode(openCode === code ? null : code)
   }
 
   if (error) return <ErrorBanner error={error} />
@@ -66,9 +49,6 @@ export default function Financials() {
     rows: balances.filter((b) => b.type === type && b.balance_paisa !== 0),
   })).filter((g) => g.rows.length > 0)
 
-  const openLines = openCode ? linesByCode[openCode] : undefined
-  const openDr = (openLines ?? []).reduce((s, l) => s + l.debit_paisa, 0)
-  const openCr = (openLines ?? []).reduce((s, l) => s + l.credit_paisa, 0)
 
   return (
     <div className="space-y-6">
@@ -140,53 +120,7 @@ export default function Financials() {
                       {openCode === b.code && (
                         <tr className="border-b border-slate-100 bg-slate-50/60">
                           <td colSpan={3} className="px-4 py-3">
-                            {loadingCode === b.code ? (
-                              <Spinner label="Loading every line…" />
-                            ) : (openLines ?? []).length === 0 ? (
-                              <div className="text-sm text-slate-500">No lines found for this account.</div>
-                            ) : (
-                              <div className="space-y-2">
-                                <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-xs text-slate-600">
-                                  <span>
-                                    <strong>{(openLines ?? []).length}</strong> line(s)
-                                  </span>
-                                  <span>
-                                    Total money out (Dr): <Money paisa={openDr} />
-                                  </span>
-                                  <span>
-                                    Total money in (Cr): <Money paisa={openCr} />
-                                  </span>
-                                </div>
-                                <div className="max-h-96 overflow-y-auto rounded-lg border border-slate-200 bg-white">
-                                  <div className="overflow-x-auto"><table className="w-full text-xs">
-                                    <thead>
-                                      <tr className="border-b border-slate-200 bg-slate-50 text-left uppercase tracking-wide text-slate-500">
-                                        <th className="px-3 py-2">Date</th>
-                                        <th className="px-3 py-2">Ref</th>
-                                        <th className="px-3 py-2">Description</th>
-                                        <th className="px-3 py-2 text-right">Money out (Dr)</th>
-                                        <th className="px-3 py-2 text-right">Money in (Cr)</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {(openLines ?? []).map((l) => (
-                                        <tr key={`${l.event_id}-${l.entry_seq}`} className="border-b border-slate-100 last:border-0">
-                                          <td className="whitespace-nowrap px-3 py-1.5 text-slate-600">{l.occurred_on}</td>
-                                          <td className="px-3 py-1.5 font-mono">{l.event_ref}</td>
-                                          <td className="px-3 py-1.5">{l.description}</td>
-                                          <td className="px-3 py-1.5 text-right font-mono tabular-nums">
-                                            {l.debit_paisa > 0 ? <Money paisa={l.debit_paisa} /> : '—'}
-                                          </td>
-                                          <td className="px-3 py-1.5 text-right font-mono tabular-nums">
-                                            {l.credit_paisa > 0 ? <Money paisa={l.credit_paisa} /> : '—'}
-                                          </td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table></div>
-                                </div>
-                              </div>
-                            )}
+                            <AccountDrill code={b.code} />
                           </td>
                         </tr>
                       )}
@@ -203,6 +137,65 @@ export default function Financials() {
           append-only lines behind it.
         </p>
       </Card>
+    </div>
+  )
+}
+
+/** Every ledger line of one account, a page at a time; totals come from the database. */
+function AccountDrill({ code }: { code: string }) {
+  const lines = usePaged((limit, offset) => engine.accountLines(code, limit, offset), code)
+  const [totals, setTotals] = useState<AccountTotals | null>(null)
+  useEffect(() => {
+    engine.accountTotals(code).then(setTotals).catch(() => setTotals(null))
+  }, [code])
+
+  if (lines.error != null) return <ErrorBanner error={lines.error} />
+  if (!lines.rows) return <Spinner label="Loading lines…" />
+  if (lines.rows.length === 0) return <div className="text-sm text-slate-500">No lines found for this account.</div>
+  return (
+    <div className="space-y-2">
+      {totals && (
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm text-slate-600">
+          <span>
+            <strong>{totals.line_count}</strong> line(s)
+          </span>
+          <span>
+            Total debits: <Money paisa={totals.debit_paisa} />
+          </span>
+          <span>
+            Total credits: <Money paisa={totals.credit_paisa} />
+          </span>
+        </div>
+      )}
+      <div className="max-h-96 overflow-y-auto rounded-lg border border-slate-200 bg-white">
+        <div className="overflow-x-auto"><table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+              <th className="px-3 py-2">Date</th>
+              <th className="px-3 py-2">Ref</th>
+              <th className="px-3 py-2">Description</th>
+              <th className="px-3 py-2 text-right">Debit</th>
+              <th className="px-3 py-2 text-right">Credit</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lines.rows.map((l) => (
+              <tr key={`${l.event_id}-${l.entry_seq}`} className="border-b border-slate-100 last:border-0">
+                <td className="whitespace-nowrap px-3 py-1.5 text-slate-600">{l.occurred_on}</td>
+                <td className="px-3 py-1.5 font-mono">{l.event_ref}</td>
+                <td className="px-3 py-1.5">{l.description}</td>
+                <td className="px-3 py-1.5 text-right font-mono tabular-nums">
+                  {l.debit_paisa > 0 ? <Money paisa={l.debit_paisa} /> : '—'}
+                </td>
+                <td className="px-3 py-1.5 text-right font-mono tabular-nums">
+                  {l.credit_paisa > 0 ? <Money paisa={l.credit_paisa} /> : '—'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table></div>
+      </div>
+      <ShowMore paged={lines} />
     </div>
   )
 }

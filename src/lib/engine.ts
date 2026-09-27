@@ -22,6 +22,9 @@ import type {
   SaleResult,
   DispatchResult,
   DispatchLineInput,
+  AccountTotals,
+  SalesTotals,
+  LedgerHealth,
 } from './types'
 
 /**
@@ -45,6 +48,9 @@ export class InvariantError extends Error {
     this.definite = definite
   }
 }
+
+/** Page size for long lists. The API returns at most 1000 rows per request, so nothing loads "everything". */
+export const PAGE_SIZE = 30
 
 /** A save with no reply for this long is treated as "not saved — retry". */
 export const SAVE_TIMEOUT_MS = 20_000
@@ -71,8 +77,8 @@ type AccountRow = { id: number; code: string; name: string }
  */
 const OFFLINE_READS = [
   'listEvents', 'accountBalances', 'stockOnHand', 'batches', 'products', 'locations', 'openReviewItems',
-  'eventLines', 'accountLines', 'customers', 'customerAdvanceBalance', 'sales', 'dispatchAllocations',
-  'debtors', 'fifoPool',
+  'eventLines', 'accountLines', 'accountTotals', 'customers', 'customerAdvanceBalance', 'sales', 'salesTotals',
+  'dispatchAllocations', 'debtors', 'fifoPool', 'ledgerHealth',
 ] as const
 
 export class LedgerEngine {
@@ -117,14 +123,14 @@ export class LedgerEngine {
     return this.userId
   }
 
-  /** Events with totals (from app.v_events_with_party). */
-  async listEvents(limit = 500): Promise<EventRow[]> {
+  /** One page of events, newest first (from app.v_events_with_party). */
+  async listEvents(limit = PAGE_SIZE, offset = 0): Promise<EventRow[]> {
     const { data, error } = await supabase
       .from('v_events_with_party')
       .select('*')
       .order('occurred_on', { ascending: false })
       .order('event_ref', { ascending: true })
-      .limit(limit)
+      .range(offset, offset + limit - 1)
     if (error) throw rpcError(error)
     return data as EventRow[]
   }
@@ -216,42 +222,32 @@ export class LedgerEngine {
     return result
   }
 
-  /**
-   * Every ledger line of one account, with date/ref/description resolved from
-   * the events table. Read-only transparency drill-down — nothing is derived,
-   * every line is shown exactly as the append-only ledger holds it.
-   */
-  async accountLines(accountCode: string): Promise<AccountLineRow[]> {
-    const { data: lines, error } = await supabase
-      .from('v_ledger_lines')
-      .select('event_id, entry_seq, debit_paisa, credit_paisa')
+  /** One page of an account's ledger lines, newest first, with date/ref/description (public.v_account_lines). */
+  async accountLines(accountCode: string, limit = PAGE_SIZE, offset = 0): Promise<AccountLineRow[]> {
+    const { data, error } = await supabase
+      .from('v_account_lines')
+      .select('event_id, entry_seq, debit_paisa, credit_paisa, occurred_on, event_ref, description')
       .eq('account_code', accountCode)
-      .order('event_id', { ascending: true })
+      .order('occurred_on', { ascending: false })
+      .order('event_id', { ascending: false })
       .order('entry_seq', { ascending: true })
+      .range(offset, offset + limit - 1)
     if (error) throw rpcError(error)
+    return data as AccountLineRow[]
+  }
 
-    const eventIds = [...new Set((lines ?? []).map((l: any) => l.event_id as number))]
-    const eventsById = new Map<number, { occurred_on: string; event_ref: string; description: string }>()
-    if (eventIds.length > 0) {
-      const { data: evs, error: evErr } = await supabase
-        .from('v_events_with_party')
-        .select('id, occurred_on, event_ref, description')
-        .in('id', eventIds)
-      if (evErr) throw new InvariantError(evErr.message)
-      for (const e of (evs ?? []) as any[]) {
-        eventsById.set(e.id, { occurred_on: e.occurred_on, event_ref: e.event_ref, description: e.description })
-      }
-    }
+  /** Line count and debit/credit totals of one account, computed by the database. */
+  async accountTotals(accountCode: string): Promise<AccountTotals> {
+    const { data, error } = await supabase.from('v_account_totals').select('*').eq('code', accountCode).single()
+    if (error) throw rpcError(error)
+    return data as AccountTotals
+  }
 
-    return (lines ?? []).map((l: any) => ({
-      event_id: l.event_id,
-      entry_seq: l.entry_seq,
-      debit_paisa: l.debit_paisa,
-      credit_paisa: l.credit_paisa,
-      occurred_on: eventsById.get(l.event_id)?.occurred_on ?? '',
-      event_ref: eventsById.get(l.event_id)?.event_ref ?? '',
-      description: eventsById.get(l.event_id)?.description ?? '',
-    })) as AccountLineRow[]
+  /** Integrity checks computed by the database (debits = credits, stock tie, no negative cash day). */
+  async ledgerHealth(): Promise<LedgerHealth> {
+    const { data, error } = await supabase.from('v_ledger_health').select('*').single()
+    if (error) throw rpcError(error)
+    return data as LedgerHealth
   }
 
   /** Post a balanced event through the guarded RPC. Returns the new event_ref. */
@@ -390,24 +386,32 @@ export class LedgerEngine {
     return data?.advance_balance_paisa ?? 0
   }
 
-  /** Invoices (public.v_sales) with dispatch progress and gross margin. */
-  async sales(limit = 200): Promise<SaleRow[]> {
+  /** One page of invoices (public.v_sales), newest first, with dispatch progress and gross margin. */
+  async sales(limit = PAGE_SIZE, offset = 0): Promise<SaleRow[]> {
     const { data, error } = await supabase
       .from('v_sales')
       .select('*')
       .order('occurred_on', { ascending: false })
-      .limit(limit)
+      .order('sale_ref', { ascending: false })
+      .range(offset, offset + limit - 1)
     if (error) throw rpcError(error)
     return data as SaleRow[]
   }
 
-  /** Per-batch COGS allocations (public.v_dispatch_allocations). */
-  async dispatchAllocations(limit = 500): Promise<DispatchAllocationRow[]> {
+  /** Totals over ALL invoices, computed by the database (public.v_sales_totals). */
+  async salesTotals(): Promise<SalesTotals> {
+    const { data, error } = await supabase.from('v_sales_totals').select('*').single()
+    if (error) throw rpcError(error)
+    return data as SalesTotals
+  }
+
+  /** Per-batch COGS allocations of one invoice (public.v_dispatch_allocations). */
+  async dispatchAllocations(saleRef: string): Promise<DispatchAllocationRow[]> {
     const { data, error } = await supabase
       .from('v_dispatch_allocations')
       .select('*')
-      .order('occurred_on', { ascending: false })
-      .limit(limit)
+      .eq('sale_ref', saleRef)
+      .order('occurred_on', { ascending: true })
     if (error) throw rpcError(error)
     return data as DispatchAllocationRow[]
   }

@@ -47,6 +47,30 @@ export type AccountLineRow = {
   credit_paisa: number
 }
 
+/** Per-account totals computed by the database (public.v_account_totals). */
+export type AccountTotals = { code: string; line_count: number; debit_paisa: number; credit_paisa: number }
+
+/** Sales totals over all invoices (public.v_sales_totals). */
+export type SalesTotals = {
+  invoices: number
+  revenue_paisa: number
+  cogs_paisa: number
+  dispatched_revenue_paisa: number
+  dispatched_cogs_paisa: number
+  not_fully_dispatched: number
+}
+
+/** Integrity checks computed by the database (public.v_ledger_health). */
+export type LedgerHealth = {
+  total_debit_paisa: number
+  total_credit_paisa: number
+  stock_ledger_paisa: number
+  stock_movements_paisa: number
+  stock_mismatched_accounts: number
+  negative_cash_days: number
+  lowest_cash_paisa: number | null
+}
+
 export type AccountBalance = {
   code: string
   name: string
