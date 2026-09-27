@@ -37,7 +37,6 @@ export default function SaltPurchaseForm({ onPosted }: { onPosted: () => void })
     Promise.all([engine.products(), engine.locations()])
       .then(([p, l]) => {
         setProducts(p)
-        setProductCode((prev) => prev || p.find((x) => x.code === 'SALT_RAW')?.code || p[0]?.code || '')
         setLocations(l)
         setLocationCode((prev) => prev || l.find((x) => x.kind === 'plant')?.code || l[0]?.code || '')
       })
@@ -63,12 +62,16 @@ export default function SaltPurchaseForm({ onPosted }: { onPosted: () => void })
 
   const valid = supplier.trim().length > 0 && qtyOk && costOk && !!productCode && !!locationCode
 
-  const lines = [
-    { account: invAccount, debit: costOk ? Math.round(cost * 100) : 0 },
-    { account: payCash ? '1000' : '2000', credit: costOk ? Math.round(cost * 100) : 0 },
-  ]
+  // no salt picked yet: nothing to preview (no guessed account)
+  const lines = productCode
+    ? [
+        { account: invAccount, debit: costOk ? Math.round(cost * 100) : 0 },
+        { account: payCash ? '1000' : '2000', credit: costOk ? Math.round(cost * 100) : 0 },
+      ]
+    : []
 
   function clear() {
+    setProductCode('') // no default salt: picked again for every purchase
     setSupplier('')
     setQtyKg('')
     setCostPkr('')
@@ -119,6 +122,7 @@ export default function SaltPurchaseForm({ onPosted }: { onPosted: () => void })
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
           <Field label="What kind of salt?">
             <select value={productCode} onChange={(e) => setProductCode(e.target.value)} className={inputCls} required>
+              <option value="" disabled>Pick one…</option>
               {products?.map((p) => (
                 <option key={p.code} value={p.code}>{p.name}</option>
               ))}
