@@ -358,10 +358,14 @@ history show a negative day without being blocked. The 2026-09-27 corrections we
 - **JARVIS** tables (`public.contacts`, `research_leads`, `notifications`, `reject_log`,
   `staging_candidates`): RLS on, no policies, no anon/authenticated privileges. JARVIS connects as
   `postgres` (owner, BYPASSRLS) through the pooler and is unaffected.
-- **JARVIS and the ledger (future, not built):** JARVIS must never touch the ledger through the
-  `postgres` role. It will get its own `app.users` row ("JARVIS — Rao's assistant") and its own Supabase
-  login, and call the same guarded RPCs, so `app.require_user()` identifies it exactly like a person and
-  every entry it makes is attributed to it.
+- **JARVIS and the ledger (built 2026-09-28, migration `20260927191127`):** JARVIS has its own
+  Supabase login (`aaa_trading.pk+jarvis@outlook.com`) linked to the `app.users` row
+  "JARVIS (Rao's assistant)", role `assistant`. It reads the ledger through the same RLS as the app
+  (every `public.v_*` view, including `v_ledger_health`) and cannot read the JARVIS tables above.
+  It is **read-only**: `app.require_user()` refuses role `assistant`, so every save function answers
+  "Not authorised". Writing stays closed until `post_event` is restricted (Wave 2 item 8) and the owner
+  approves; then it would call the same guarded RPCs and every entry would be attributed to it.
+  JARVIS must stop using the `postgres` role for the ledger.
 - Remaining advisor WARNs are intentional: the 10 guarded RPCs are SECURITY DEFINER and executable by
   `authenticated` (that is how the app writes); "leaked password protection" is an Auth dashboard switch.
   Supabase's own `supabase_admin` default privileges in `public` still grant new objects to anon; only
