@@ -287,7 +287,7 @@ ref, its own idempotency key, created by the signed-in user. Posted 2026-09-27 b
 | | Original | What was wrong | Register says | Correcting entry | Status |
 |---|---|---|---|---|---|
 | A | CL-20260828-029 "Petrol", 28 Aug | booked Rs 5,000 | Rs 500 | **EV-000265** (28 Aug): Dr Cash 4,500 / Cr Fuel 4,500 | corrected |
-| B | EV-000246 (Rs 900), EV-000247 (Rs 24,000), 6 Sep | not in register | — | — | **pending: awaiting father** |
+| B | EV-000246 (Rs 900), EV-000247 (Rs 24,000), 6 Sep | not in register | — | two entries (6 Sep): Dr Cash / Cr Suspense 900 and 24,000 (Task 3c, below) | corrected |
 | C | EV-000210 "sell Rs 3,150 (no kg)", 13 Sep | duplicate of Hakim Ali's Rs 3,100 payment EV-000174 | only one payment | **EV-000266** (13 Sep): Dr Suspense 3,150 / Cr Cash 3,150 | corrected |
 | D | EV-000169 salt purchase Rs 117,500, 14 Sep | held as a payable | paid in cash in full that day | **EV-000267** (14 Sep): Dr Accounts Payable 117,500 / Cr Cash 117,500 | corrected |
 | E | EV-000248 capital Rs 600,000, 19 Sep | typed in on 19 Sep | money arrived earlier; owner decision: 23 Aug | **EV-000263** (23 Aug): Dr Cash / Cr Owner Capital 600,000, then **EV-000264** (19 Sep): exact reverse of EV-000248 | corrected |
@@ -296,13 +296,39 @@ Results after A, C, D, E: cash on hand Rs 492,545.00; Owner Capital Rs 1,100,000
 Rs 0; debtors Rs 21,390; debits = credits; day-by-day cash from 23 Aug never below zero (lowest
 Rs 492,545 on 18 Sep).
 
-Not errors, recategorisation only:
+### Task 3c — Suspense recategorised (posted 2026-09-27)
 
-- "Sabiqa" EV-000211 to EV-000214 (Rs 1,650 cash-in): real cash received for earlier sales.
-  Amounts are correct; they only need moving out of Suspense later.
-- Correction C moved Rs 3,150 back into Suspense (the original had put it there); clear it together
-  with the rest of Suspense.
-- 8 Sep correction entries EV-000252 to EV-000262 (Rs 3,630 total) are in the register and correct — no action.
+All mapping owner-confirmed. 68 new entries **EV-000336 to EV-000403**, each keyed `3c-<ref>` (`-a`/`-b`
+for two-step items), dated the same day as its original, `source_ref` = the original, created by Rao
+Aosaf (Operator), posted in one transaction:
+
+- **Correction B:** EV-000246 and EV-000247 reversed (Dr 1000 / Cr 1900, Rs 24,900).
+- **Money out (Dr account / Cr 1900):** 49 lines recoded to 1400 motorcycle (helmet, transfer fee),
+  1500 fixed assets (weighing scale + transport), 3100 owner drawings (Eisha marriage), 5000 labour,
+  5300 fuel, 5400 packaging (sacks, thread), 5500 site meals, 5600 travel, 5700 repairs (mistri,
+  welding, clip and cable), 5800 admin (Valencia office rent, courier), 5900 other (gifts/help, small
+  site costs, tap for goats' water).
+- **EV-000243 travel Rs 1,500:** (a) 16 Sep Dr 1000 / Cr 1900 reverses it; (b) 15 Sep, the register
+  date, Dr 5600 / Cr 1000.
+- **Money in (Dr 1900 / Cr 4000):** sabit sales EV-000211/212/213/214 (Rs 1,650) plus EV-000209
+  crushed salt Rs 100 (income only, kg unknown). The sabit 132 kg (40 + 48 + 4 + 40, owner rate
+  40 kg = Rs 500) left BATCH-001 through `public.post_stock_correction` at BATCH-001's own cost
+  (Rs 7.51/kg, Rs 991.32: Dr 4100 / Cr 1200 plus an 'out' movement).
+- **Wrong category outside Suspense:** EV-000233 13,500 → 1500 (plant electrical goods, not the bill);
+  EV-000236 580 and EV-000237 1,600 → 5700; CL-20260829-033 500 goat feed 1450 → 5900;
+  CL-20260901-056 300 chai → 1400 (motorcycle key); CL-20260902-061 500 khana → 5900.
+- **Master data:** SALT_ROCK's form set to `raw` (migration `20260927091550`) so rock salt leaves the
+  account it was bought into (1200), not 1210.
+- **No change (owner):** EV-000179; the rock-salt load date (3 vs 6 Sep); BATCH-075 stays 12,500 kg;
+  INV-00037/38/39/53 and the 6–12 Sep dispatches.
+
+Results, all checked after posting: Suspense Rs 0.00; cash Rs 517,445.00; debits = credits (no
+unbalanced event); no negative cash day 23 Aug onward; debtors Rs 21,390; Utilities Rs 17,638 →
+1,958 (−15,680); BATCH-001 15,210 → 15,078 kg; stock tie holds per account (1200 = 113,278.68,
+1210 = 92,284.50, ledger = movements).
+
+EV numbers 268–335 are unused: a rolled-back dry run consumed them (Postgres sequences never roll
+back). No entry was lost; the numbers are simply skipped.
 
 **Future task:** make the cash guard check the day-by-day running balance, not only the total.
 `app.assert_cash_nonnegative` checks today's total cash only, so a back-dated entry could make
