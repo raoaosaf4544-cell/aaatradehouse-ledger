@@ -102,7 +102,7 @@ export default function SaltInventory() {
         )}
         <p className="mt-3 text-xs text-slate-500">
           Wastage rows record the measured loss and its value; on-hand quantity is computed strictly from
-          in − out movements, so a fully consumed batch closes to exactly zero. The database rejects any
+          in − out movements, so a fully consumed batch closes to exactly zero kg. The database rejects any
           run that would make a batch go negative or fail mass conservation.
         </p>
       </Card>

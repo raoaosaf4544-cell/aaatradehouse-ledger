@@ -27,7 +27,7 @@ export default function Record({ go }: { go: (tab: string) => void }) {
     {
       id: 'record-sale',
       title: 'Sell Salt / Dispatch',
-      desc: 'Invoice a customer, take cash or leave a receivable, then dispatch stock — FIFO batches priced to the paisa.',
+      desc: 'Bill a customer — cash now or udhaar — and the salt leaves stock at its exact batch cost, in one step.',
       icon: PackageOpen,
       tone: 'from-teal-500 to-emerald-600',
     },

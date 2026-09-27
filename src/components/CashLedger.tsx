@@ -90,7 +90,7 @@ export default function CashLedger() {
       </Card>
 
       <Card>
-        <SectionTitle>Recent events</SectionTitle>
+        <SectionTitle>Recent entries — cash in and out</SectionTitle>
         {!events.rows ? (
           <Spinner />
         ) : events.rows.length === 0 ? (
@@ -103,7 +103,8 @@ export default function CashLedger() {
                   <th className="pb-2">Date</th>
                   <th className="pb-2">Ref</th>
                   <th className="pb-2">Description</th>
-                  <th className="pb-2 text-right">Amount</th>
+                  <th className="pb-2 text-right">In</th>
+                  <th className="pb-2 text-right">Out</th>
                 </tr>
               </thead>
               <tbody>
@@ -112,18 +113,28 @@ export default function CashLedger() {
                     <td className="whitespace-nowrap py-2 text-slate-600">{e.occurred_on}</td>
                     <td className="py-2 font-mono text-xs">{e.event_ref}</td>
                     <td className="max-w-[24rem] truncate py-2" title={e.description}>
+                      {/* by the entry's real cash effect, not its type */}
                       <span className="mr-2 inline-flex items-center">
-                        {e.event_type === 'capital_injection' || e.event_type === 'other' ? (
-                          <ArrowDownLeft className="h-3.5 w-3.5 text-emerald-600" />
-                        ) : (
-                          <ArrowUpRight className="h-3.5 w-3.5 text-rose-500" />
-                        )}
+                        {e.cash_net_paisa > 0 ? (
+                          <ArrowDownLeft className="h-4 w-4 text-emerald-700" aria-label="money in" />
+                        ) : e.cash_net_paisa < 0 ? (
+                          <ArrowUpRight className="h-4 w-4 text-rose-700" aria-label="money out" />
+                        ) : null}
                       </span>
                       {e.description}
                     </td>
-                    <td className="py-2 text-right">
-                      <Money paisa={e.total_paisa} />
-                    </td>
+                    {e.cash_net_paisa === 0 ? (
+                      <td colSpan={2} className="whitespace-nowrap py-2 text-right text-slate-600">no cash</td>
+                    ) : (
+                      <>
+                        <td className="whitespace-nowrap py-2 text-right text-emerald-800">
+                          {e.cash_net_paisa > 0 ? <Money paisa={e.cash_net_paisa} /> : ''}
+                        </td>
+                        <td className="whitespace-nowrap py-2 text-right text-rose-800">
+                          {e.cash_net_paisa < 0 ? <Money paisa={-e.cash_net_paisa} /> : ''}
+                        </td>
+                      </>
+                    )}
                   </tr>
                 ))}
               </tbody>

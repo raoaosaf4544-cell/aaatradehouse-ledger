@@ -105,8 +105,8 @@ export default function Sidebar({
         </nav>
         <div className="border-t border-slate-800 p-4">
           <div className="rounded-lg bg-slate-800 p-4 text-xs text-slate-400">
-            Your books live in a secure cloud database with double-entry checks on every entry —
-            not in this browser.
+            Your books live in a secure cloud database with double-entry checks on every entry. This phone
+            keeps a read-only copy for when there is no signal; signing out wipes it.
           </div>
         </div>
       </aside>

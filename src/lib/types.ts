@@ -34,6 +34,8 @@ export type EventRow = {
   created_at: string
   created_by_name: string | null
   total_paisa: number
+  /** real cash effect of the entry on 1000 Cash on Hand: + in, − out, 0 = no cash moved */
+  cash_net_paisa: number
 }
 
 /** One ledger line with its event context — used for account drill-downs. */
