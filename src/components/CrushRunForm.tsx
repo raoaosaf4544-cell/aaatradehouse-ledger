@@ -244,7 +244,7 @@ export default function CrushRunForm({ onPosted }: { onPosted: () => void }) {
                 <button
                   type="button"
                   onClick={() => setGrades((rows) => (rows.length > 1 ? rows.filter((r) => r.key !== g.key) : rows))}
-                  className="flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-slate-200 px-3 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                  className="flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-slate-300 px-3 text-slate-600 hover:bg-rose-50 hover:text-rose-600"
                   aria-label="Remove grade row"
                 >
                   <Trash2 className="h-5 w-5" />

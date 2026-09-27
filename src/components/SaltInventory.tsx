@@ -68,7 +68,7 @@ export default function SaltInventory() {
                 {batches.map((b) => (
                   <tr
                     key={b.batch_code}
-                    className={`border-b border-slate-100 ${b.onhand_grams === 0 ? 'text-slate-400' : ''}`}
+                    className={`border-b border-slate-100 ${b.onhand_grams === 0 ? 'text-slate-500' : ''}`}
                   >
                     <td className="py-2 font-medium">{b.batch_code}</td>
                     <td className="py-2">{b.product_name}</td>

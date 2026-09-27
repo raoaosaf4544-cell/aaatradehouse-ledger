@@ -183,7 +183,7 @@ export default function SaltPurchaseForm({ onPosted }: { onPosted: () => void })
                 }`}
               >
                 <div className="text-base font-bold text-slate-800">{opt.title}</div>
-                <div className="text-xs text-slate-500">{opt.sub}</div>
+                <div className="text-sm text-slate-700">{opt.sub}</div>
               </button>
             ))}
           </div>

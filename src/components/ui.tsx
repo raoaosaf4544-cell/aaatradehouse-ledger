@@ -79,7 +79,7 @@ export function ErrorBanner({ error, onDismiss, kind = 'load' }: { error: unknow
       {onDismiss && (
         <button
           onClick={onDismiss}
-          className="shrink-0 rounded-lg border border-rose-200 px-2 py-1 text-xs font-medium text-rose-700 hover:bg-rose-100"
+          className="min-h-11 shrink-0 rounded-lg border border-rose-300 px-3 text-sm font-semibold text-rose-800 hover:bg-rose-100"
         >
           Dismiss
         </button>
@@ -120,7 +120,7 @@ export function Field({
     <label className="block">
       <span className="mb-1.5 block text-base font-semibold text-slate-700">{label}</span>
       {children}
-      {hint && <span className="mt-1 block text-xs text-slate-500">{hint}</span>}
+      {hint && <span className="mt-1 block text-sm text-slate-600">{hint}</span>}
     </label>
   )
 }
@@ -151,7 +151,7 @@ export function DateField({ label, value, onChange }: { label: string; value: st
 }
 
 export const inputCls =
-  'w-full rounded-xl border-2 border-slate-300 bg-white px-4 py-3 text-lg text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-100'
+  'w-full rounded-xl border-2 border-slate-300 bg-white px-4 py-3 text-lg text-slate-900 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-100'
 
 export function Badge({
   children,

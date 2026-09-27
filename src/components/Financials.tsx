@@ -106,14 +106,14 @@ export default function Financials() {
                         onClick={() => toggle(b.code)}
                         className={`cursor-pointer border-b border-slate-100 hover:bg-slate-50 ${openCode === b.code ? 'bg-blue-50/60' : ''}`}
                       >
-                        <td className="py-2 font-mono text-xs text-slate-500">
+                        <td className="py-3 font-mono text-xs text-slate-600">
                           <span className="inline-flex items-center gap-1">
                             {openCode === b.code ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
                             {b.code}
                           </span>
                         </td>
-                        <td className="py-2">{b.name}</td>
-                        <td className="py-2 text-right">
+                        <td className="py-3">{b.name}</td>
+                        <td className="py-3 text-right">
                           <Money paisa={b.type === 'liability' || b.type === 'equity' || b.type === 'income' ? -b.balance_paisa : b.balance_paisa} />
                         </td>
                       </tr>

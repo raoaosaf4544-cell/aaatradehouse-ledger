@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { FileSpreadsheet, LogOut, Menu } from 'lucide-react'
 import { supabase } from './lib/supabase'
@@ -87,15 +87,62 @@ function App() {
   return <Ledger userName={user.name} />
 }
 
+const TABS = new Set([
+  'dashboard', 'cash', 'salt', 'financials', 'review', 'debtors', 'record',
+  'record-capital', 'record-purchase', 'record-crush', 'record-moneyout', 'record-sale',
+])
+const tabFromHash = () => {
+  const t = window.location.hash.slice(1)
+  return TABS.has(t) ? t : 'dashboard'
+}
+/** Installed on the home screen: Back must never close the app (there is no browser around it). */
+const isInstalledApp = () =>
+  window.matchMedia?.('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true
+
 function Ledger({ userName }: { userName: string }) {
   const offline = useOffline()
-  const [activeTab, setActiveTab] = useState('dashboard')
+  const [activeTab, setActiveTab] = useState(tabFromHash)
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [dataVersion, setDataVersion] = useState(0)
+  const tabRef = useRef(activeTab)
+  const drawerRef = useRef(false)
+  tabRef.current = activeTab
+  drawerRef.current = isSidebarOpen
+
+  // Phone Back button = previous screen. Each screen change is one history step (#tab in the address).
+  useEffect(() => {
+    const start = tabRef.current
+    if (isInstalledApp()) {
+      // a guard step under the first screen: Back on the Dashboard stays in the app
+      window.history.replaceState({ tab: 'dashboard', guard: true }, '', '#dashboard')
+      window.history.pushState({ tab: start }, '', `#${start}`)
+    } else {
+      window.history.replaceState({ tab: start }, '', `#${start}`)
+    }
+    const onPop = (e: PopStateEvent) => {
+      const st = e.state as { tab?: string; guard?: boolean } | null
+      if (drawerRef.current) {
+        // Back with the menu open just closes the menu
+        setIsSidebarOpen(false)
+        window.history.pushState({ tab: tabRef.current }, '', `#${tabRef.current}`)
+        return
+      }
+      if (st?.guard) {
+        window.history.pushState({ tab: 'dashboard' }, '', '#dashboard')
+        setActiveTab('dashboard')
+        return
+      }
+      setActiveTab(st?.tab && TABS.has(st.tab) ? st.tab : tabFromHash())
+    }
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
 
   function go(tab: string) {
+    if (tab !== tabRef.current) window.history.pushState({ tab }, '', `#${tab}`)
     setActiveTab(tab)
     setIsSidebarOpen(false)
+    document.querySelector('main .overflow-auto')?.scrollTo(0, 0)
   }
 
   function onPosted() {

@@ -180,7 +180,7 @@ export default function Debtors({ onPosted }: { onPosted: () => void }) {
                     </td>
                     <td className="px-3 py-2.5 text-right font-mono tabular-nums">PKR {(d.total_invoiced_paisa / 100).toLocaleString()}</td>
                     <td className="px-3 py-2.5 text-right font-mono tabular-nums text-emerald-700">PKR {(d.total_paid_paisa / 100).toLocaleString()}</td>
-                    <td className={`px-3 py-2.5 text-right font-mono font-bold tabular-nums ${d.outstanding_paisa > 0 ? 'text-amber-700' : 'text-slate-400'}`}>
+                    <td className={`px-3 py-2.5 text-right font-mono font-bold tabular-nums ${d.outstanding_paisa > 0 ? 'text-amber-700' : 'text-slate-500'}`}>
                       PKR {(d.outstanding_paisa / 100).toLocaleString()}
                     </td>
                     <td className="px-3 py-2.5 text-right text-xs text-slate-500">{d.last_sale_on ?? '—'}</td>

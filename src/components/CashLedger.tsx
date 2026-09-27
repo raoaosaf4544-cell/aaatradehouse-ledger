@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { ArrowDownLeft, ArrowUpRight } from 'lucide-react'
 import { engine } from '../lib/engine'
 import type { AccountTotals } from '../lib/types'
-import { Badge, Card, DateField, EmptyState, ErrorBanner, Money, SectionTitle, ShowMore, Spinner, todayPK, usePaged } from './ui'
+import { Badge, Card, DateField, EmptyState, ErrorBanner, Field, inputCls, Money, SectionTitle, ShowMore, Spinner, todayPK, usePaged } from './ui'
 import MoneyOutForm from './MoneyOutForm'
 import { SaveControls, useSafeSave } from './SafeSave'
 
@@ -34,7 +34,7 @@ export default function CashLedger() {
       <Card>
         <button
           onClick={() => setSuspenseOpen((o) => !o)}
-          className="flex w-full items-center justify-between text-left"
+          className="flex min-h-11 w-full items-center justify-between text-left"
         >
           <SectionTitle>Unclassified (Suspense) — every line the books could not label yet</SectionTitle>
           <Badge tone={suspenseDr - suspenseCr !== 0 ? 'amber' : 'slate'}>
@@ -201,8 +201,7 @@ function MoneyInCard({ onPosted }: { onPosted: () => void }) {
         <fieldset disabled={safe.locked} className="space-y-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <DateField label="Date received" value={date} onChange={setDate} />
-          <label className="block text-sm">
-            <span className="mb-1 block font-medium text-slate-700">Amount (PKR)</span>
+          <Field label="Amount (PKR)">
             <input
               type="number"
               min="1"
@@ -211,25 +210,24 @@ function MoneyInCard({ onPosted }: { onPosted: () => void }) {
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               placeholder="0.00"
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+              className={inputCls}
               required
             />
-          </label>
+          </Field>
         </div>
 
-        <label className="block text-sm">
-          <span className="mb-1 block font-medium text-slate-700">Where did it come from?</span>
+        <Field label="Where did it come from?" hint="Salt sold? Use Sell Salt instead, so the stock goes down too.">
           <input
             type="text"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="e.g. roznamcha aamdani…"
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+            className={inputCls}
             required
           />
-        </label>
+        </Field>
 
-        <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm">
+        <label className="flex min-h-11 cursor-pointer items-center gap-3 text-base">
           <input
             type="checkbox"
             checked={toSuspense}
@@ -242,17 +240,16 @@ function MoneyInCard({ onPosted }: { onPosted: () => void }) {
           </span>
         </label>
         {toSuspense && (
-          <label className="block text-sm">
-            <span className="mb-1 block font-medium text-slate-700">Write what this was for</span>
+          <Field label="Write what this was for">
             <input
               type="text"
               value={suspenseNote}
               onChange={(e) => setSuspenseNote(e.target.value)}
               placeholder="e.g. money from Ali for last week's salt"
-              className="w-full rounded-lg border border-amber-400 px-3 py-2 text-base focus:border-blue-500 focus:outline-none"
+              className={`${inputCls} border-amber-400`}
               required
             />
-          </label>
+          </Field>
         )}
 
         <div className="rounded-lg bg-slate-50 p-4 text-sm">
