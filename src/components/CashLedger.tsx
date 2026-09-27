@@ -62,7 +62,7 @@ export default function CashLedger() {
             <EmptyState>Nothing unclassified — every rupee is labelled.</EmptyState>
           ) : (
             <div className="max-h-96 overflow-y-auto rounded-lg border border-slate-200">
-              <table className="w-full text-xs">
+              <div className="overflow-x-auto"><table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50 text-left uppercase tracking-wide text-slate-500">
                     <th className="px-3 py-2">Date</th>
@@ -92,7 +92,7 @@ export default function CashLedger() {
                     <td className="px-3 py-2 text-right font-mono tabular-nums"><Money paisa={suspenseCr} /></td>
                   </tr>
                 </tbody>
-              </table>
+              </table></div>
             </div>
           ))}
       </Card>
@@ -154,6 +154,7 @@ function MoneyInCard({
   const [amount, setAmount] = useState('')
   const [description, setDescription] = useState('')
   const [toSuspense, setToSuspense] = useState(false)
+  const [suspenseNote, setSuspenseNote] = useState('')
   const [success, setSuccess] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -161,7 +162,8 @@ function MoneyInCard({
     const n = Number(amount)
     return Number.isFinite(n) && n > 0 ? Math.round(n * 100) : 0
   })()
-  const valid = amountPaisa > 0 && description.trim().length > 0
+  // Suspense must never again fill up with unexplained lines: a note is required when ticked.
+  const valid = amountPaisa > 0 && description.trim().length > 0 && (!toSuspense || suspenseNote.trim().length > 0)
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -172,7 +174,7 @@ function MoneyInCard({
       const ref = await engine.postEvent({
         eventType: 'other',
         occurredOn: date,
-        description: description.trim(),
+        description: toSuspense ? `${description.trim()} — for: ${suspenseNote.trim()}` : description.trim(),
         lines: toSuspense
           ? [
               { account: '1000', debit: amountPaisa },
@@ -187,6 +189,7 @@ function MoneyInCard({
       setSuccess(`Recorded as ${ref}.`)
       setAmount('')
       setDescription('')
+      setSuspenseNote('')
       onPosted()
     } catch (err) {
       onError(err)
@@ -244,18 +247,31 @@ function MoneyInCard({
           />
         </label>
 
-        <label className="flex items-start gap-2 text-sm">
+        <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm">
           <input
             type="checkbox"
             checked={toSuspense}
             onChange={(e) => setToSuspense(e.target.checked)}
-            className="mt-0.5"
+            className="h-6 w-6 shrink-0"
           />
           <span>
             Not sure what this is — send it to <strong>Suspense</strong> for review instead of
             booking it as income.
           </span>
         </label>
+        {toSuspense && (
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-slate-700">Write what this was for</span>
+            <input
+              type="text"
+              value={suspenseNote}
+              onChange={(e) => setSuspenseNote(e.target.value)}
+              placeholder="e.g. money from Ali for last week's salt"
+              className="w-full rounded-lg border border-amber-400 px-3 py-2 text-base focus:border-blue-500 focus:outline-none"
+              required
+            />
+          </label>
+        )}
 
         <div className="rounded-lg bg-slate-50 p-4 text-sm">
           <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -282,7 +298,7 @@ function MoneyInCard({
         <button
           type="submit"
           disabled={!valid || busy}
-          className="w-full rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+          className="min-h-11 w-full rounded-lg bg-emerald-600 px-4 py-3 text-base font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
         >
           {busy ? 'Posting…' : 'Record it'}
         </button>

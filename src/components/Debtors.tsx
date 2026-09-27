@@ -183,7 +183,7 @@ export default function Debtors({ onPosted }: { onPosted: () => void }) {
                             setPayFor(d.customer_name)
                             setPayAmount(String(d.outstanding_paisa / 100))
                           }}
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-100"
+                          className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-emerald-50 px-3 text-sm font-bold text-emerald-700 hover:bg-emerald-100"
                         >
                           <HandCoins className="h-3.5 w-3.5" /> Receive
                         </button>
@@ -225,7 +225,7 @@ export default function Debtors({ onPosted }: { onPosted: () => void }) {
                     </div>
                     <div className="text-right">
                       <div className="font-mono font-bold tabular-nums text-slate-800">PKR {(s.total_revenue_paisa / 100).toLocaleString()}</div>
-                      <div className="text-xs text-slate-500">
+                      <div className="text-sm text-slate-500">
                         {s.cogs_paisa > 0 ? (
                           <>
                             COGS PKR {(s.cogs_paisa / 100).toLocaleString()} ·{' '}

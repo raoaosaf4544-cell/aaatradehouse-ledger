@@ -171,7 +171,7 @@ export default function Dashboard({ go }: { go?: (tab: string) => void }) {
           <div className="text-sm text-slate-500">No udhaar outstanding.</div>
         ) : (
           <>
-            <table className="w-full text-sm">
+            <div className="overflow-x-auto"><table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
                   <th className="pb-2">Shop</th>
@@ -190,7 +190,7 @@ export default function Dashboard({ go }: { go?: (tab: string) => void }) {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
             {go && (
               <button
                 onClick={() => go('debtors')}
@@ -208,7 +208,7 @@ export default function Dashboard({ go }: { go?: (tab: string) => void }) {
         {snap.stock.length === 0 ? (
           <div className="text-sm text-slate-500">No stock recorded yet.</div>
         ) : (
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto"><table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
                 <th className="pb-2">Batch</th>
@@ -233,7 +233,7 @@ export default function Dashboard({ go }: { go?: (tab: string) => void }) {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         )}
       </Card>
 

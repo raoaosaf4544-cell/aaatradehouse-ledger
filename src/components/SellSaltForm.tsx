@@ -345,7 +345,7 @@ export default function SellSaltForm({ onPosted }: { onPosted: () => void }) {
               <button
                 type="button"
                 onClick={() => setLines((ls) => [...ls, { productCode: '', qtyKg: '', unitPricePkr: '' }])}
-                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                className="min-h-11 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-600 hover:bg-slate-50"
               >
                 + Add line
               </button>

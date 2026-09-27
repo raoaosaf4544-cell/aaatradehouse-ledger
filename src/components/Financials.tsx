@@ -158,7 +158,7 @@ export default function Financials() {
                                   </span>
                                 </div>
                                 <div className="max-h-96 overflow-y-auto rounded-lg border border-slate-200 bg-white">
-                                  <table className="w-full text-xs">
+                                  <div className="overflow-x-auto"><table className="w-full text-xs">
                                     <thead>
                                       <tr className="border-b border-slate-200 bg-slate-50 text-left uppercase tracking-wide text-slate-500">
                                         <th className="px-3 py-2">Date</th>
@@ -183,7 +183,7 @@ export default function Financials() {
                                         </tr>
                                       ))}
                                     </tbody>
-                                  </table>
+                                  </table></div>
                                 </div>
                               </div>
                             )}

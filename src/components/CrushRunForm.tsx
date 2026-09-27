@@ -215,7 +215,7 @@ export default function CrushRunForm({ onPosted }: { onPosted: () => void }) {
             <button
               type="button"
               onClick={() => setGrades((g) => [...g, { key: (rowKey += 1), productCode: gradeProducts[0]?.code ?? '', qtyKg: '' }])}
-              className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
             >
               <Plus className="h-4 w-4" /> Add grade
             </button>
@@ -250,7 +250,7 @@ export default function CrushRunForm({ onPosted }: { onPosted: () => void }) {
                 <button
                   type="button"
                   onClick={() => setGrades((rows) => (rows.length > 1 ? rows.filter((r) => r.key !== g.key) : rows))}
-                  className="flex items-center justify-center rounded-xl border border-slate-200 px-3 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                  className="flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-slate-200 px-3 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
                   aria-label="Remove grade row"
                 >
                   <Trash2 className="h-5 w-5" />

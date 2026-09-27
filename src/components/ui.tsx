@@ -5,7 +5,7 @@ import { InvariantError } from '../lib/engine'
 export function Money({ paisa, className = '' }: { paisa: number; className?: string }) {
   const negative = paisa < 0
   return (
-    <span className={`font-mono tabular-nums ${negative ? 'text-rose-600' : ''} ${className}`}>
+    <span className={`font-mono tabular-nums text-[max(0.875rem,1em)] ${negative ? 'text-rose-600' : ''} ${className}`}>
       {negative ? '−' : ''}PKR {paisaToPkr(Math.abs(paisa))}
     </span>
   )
@@ -51,7 +51,7 @@ export function StatCard({
     <Card>
       <div className="text-xs uppercase tracking-wide text-slate-500 font-semibold">{label}</div>
       <div className={`mt-2 text-2xl font-bold ${tones[tone]}`}>{children}</div>
-      {sub && <div className="mt-1 text-xs text-slate-500">{sub}</div>}
+      {sub && <div className="mt-1 text-sm text-slate-500">{sub}</div>}
     </Card>
   )
 }
