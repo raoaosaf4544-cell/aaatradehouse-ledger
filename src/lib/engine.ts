@@ -24,6 +24,8 @@ import type {
   CashBookDay,
   CashDay,
   CashLine,
+  DeletePreview,
+  DeletedEntry,
 } from './types'
 
 /**
@@ -80,7 +82,7 @@ type AccountRow = { id: number; code: string; name: string }
 const OFFLINE_READS = [
   'listEvents', 'accountBalances', 'stockOnHand', 'batches', 'products', 'locations', 'openReviewItems',
   'eventLines', 'accountLines', 'accountTotals', 'customers', 'customerAdvanceBalance', 'sales', 'salesTotals',
-  'dispatchAllocations', 'debtors', 'ledgerHealth', 'cashDay',
+  'dispatchAllocations', 'debtors', 'ledgerHealth', 'cashDay', 'deletedEntries',
 ] as const
 
 export class LedgerEngine {
@@ -526,6 +528,42 @@ export class LedgerEngine {
       p_dismissed: dismissed,
     })
     if (error) throw rpcError(error)
+  }
+
+  /** What deleting this entry would change, and anything that must be deleted first. Always live (never offline). */
+  async deletePreview(ref: string): Promise<DeletePreview> {
+    const { data, error } = await supabase.rpc('delete_entry_preview', { p_ref: ref }).abortSignal(AbortSignal.timeout(SAVE_TIMEOUT_MS))
+    if (error) throw rpcError(error)
+    return data as DeletePreview
+  }
+
+  /**
+   * Delete a whole entry. One transaction in the database: full copy saved, books re-checked, cancelled if any
+   * check fails. Safe to repeat: a second call answers already_deleted.
+   */
+  async deleteEntry(ref: string, reason: string): Promise<{ event_refs: string[]; deleted_id: number; already_deleted?: boolean }> {
+    if (!reason.trim()) throw new InvariantError('Write why this entry is being deleted.')
+    const { data, error } = await saveRpc('delete_entry', { p_ref: ref, p_reason: reason.trim() })
+    if (error) throw rpcError(error)
+    return data as { event_refs: string[]; deleted_id: number; already_deleted?: boolean }
+  }
+
+  /** Put a deleted entry back exactly as it was (same numbers). Safe to repeat. */
+  async restoreEntry(deletedId: number): Promise<{ event_refs: string[]; already_restored?: boolean }> {
+    const { data, error } = await saveRpc('restore_entry', { p_deleted_id: deletedId })
+    if (error) throw rpcError(error)
+    return data as { event_refs: string[]; already_restored?: boolean }
+  }
+
+  /** One page of deleted entries, newest first (public.v_deleted_entries). */
+  async deletedEntries(limit = PAGE_SIZE, offset = 0): Promise<DeletedEntry[]> {
+    const { data, error } = await supabase
+      .from('v_deleted_entries')
+      .select('*')
+      .order('deleted_at', { ascending: false })
+      .range(offset, offset + limit - 1)
+    if (error) throw rpcError(error)
+    return data as DeletedEntry[]
   }
 
   /** The entry the database holds under this key (ref, date, posted amount), or null if none. */

@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { engine } from '../lib/engine'
 import type { CashBookDay } from '../lib/types'
 import { Badge, Card, DateField, ErrorBanner, Money, SectionTitle, Spinner, dateInWords, todayPK } from './ui'
+import { EntryMenu } from './EntryActions'
 
 /**
  * Cash book, read-only: one day at a time, the way the paper roznamcha is kept — opening balance, every cash line
@@ -13,6 +14,7 @@ export default function CashBook() {
   const [date, setDate] = useState(todayPK)
   const [data, setData] = useState<CashBookDay | null>(null)
   const [error, setError] = useState<unknown>(null)
+  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
     let alive = true
@@ -25,7 +27,7 @@ export default function CashBook() {
     return () => {
       alive = false
     }
-  }, [date])
+  }, [date, reloadKey])
 
   const opening = data ? (data.day?.opening_paisa ?? data.before?.closing_paisa ?? 0) : 0
   const closing = data ? (data.day?.closing_paisa ?? opening) : 0
@@ -73,9 +75,12 @@ export default function CashBook() {
                     <div className="flex items-start gap-3">
                       <span className="mt-0.5 w-7 shrink-0 text-right text-base font-bold text-slate-600">{i + 1}.</span>
                       <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-mono text-sm text-slate-600">{l.event_ref}</span>
-                          {l.source === 'correction' && <Badge tone="amber">correction</Badge>}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-mono text-sm text-slate-600">{l.event_ref}</span>
+                            {l.source === 'correction' && <Badge tone="amber">correction</Badge>}
+                          </div>
+                          <EntryMenu entryRef={l.event_ref} onChanged={() => setReloadKey((k) => k + 1)} />
                         </div>
                         <div className="mt-0.5 break-words text-base text-slate-900">{l.description}</div>
                         <div className="mt-1 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">

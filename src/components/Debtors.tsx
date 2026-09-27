@@ -19,6 +19,7 @@ import {
   todayPK,
   usePaged,
 } from './ui'
+import { EntryMenu } from './EntryActions'
 
 /**
  * Debtors & Sales — who owes what, every invoice with its exact COGS and
@@ -63,6 +64,19 @@ export default function Debtors({ onPosted }: { onPosted: () => void }) {
     } catch {
       // no signal: the invoice opens without its batch detail
     }
+  }
+
+  function refreshAfterDelete() {
+    setExpanded(null)
+    setAllocsBySale({})
+    Promise.all([engine.debtors(), engine.salesTotals()])
+      .then(([d, t]) => {
+        setDebtors(d)
+        setTotals(t)
+      })
+      .catch(setError)
+    sales.reload()
+    onPosted()
   }
 
   function closePayment() {
@@ -221,9 +235,10 @@ export default function Debtors({ onPosted }: { onPosted: () => void }) {
               const saleAllocs = allocsBySale[s.sale_ref] ?? []
               return (
                 <div key={s.sale_ref} className="rounded-xl border border-slate-200">
+                  <div className="flex items-start">
                   <button
                     onClick={() => toggleInvoice(s.sale_ref)}
-                    className="flex w-full flex-wrap items-center justify-between gap-3 px-4 py-3 text-left hover:bg-slate-50"
+                    className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-3 px-4 py-3 text-left hover:bg-slate-50"
                   >
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
@@ -252,6 +267,10 @@ export default function Debtors({ onPosted }: { onPosted: () => void }) {
                       </div>
                     </div>
                   </button>
+                  <div className="p-2">
+                    <EntryMenu entryRef={s.sale_ref} onChanged={refreshAfterDelete} />
+                  </div>
+                  </div>
                   {isOpen && (
                     <div className="border-t border-slate-100 bg-slate-50 px-4 py-3 text-sm">
                       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">

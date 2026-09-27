@@ -21,6 +21,10 @@ const msg = friendlyMessage(server(raw), 'save')
 assert.equal(msg, 'The books refused this entry, so nothing was saved. Check the numbers and try again.')
 assert.ok(!msg.includes('INVARIANT') && !msg.includes('paisa'))
 
+// delete / restore refusals are written in plain words by the database: shown without the 'Cannot delete:' prefix
+assert.equal(friendlyMessage(server('Cannot delete: Salt from BATCH-075 was already used by EV-000171. Delete those first.'), 'save'), 'Salt from BATCH-075 was already used by EV-000171. Delete those first.')
+assert.equal(friendlyMessage(server('Cannot restore: an entry with the same number already exists.'), 'save'), 'an entry with the same number already exists.')
+
 // our own plain checks pass through; our own strings pass through
 assert.equal(friendlyMessage({ message: 'Supplier name is required.', definite: true, fromServer: false }, 'save'), 'Supplier name is required.')
 assert.equal(friendlyMessage('Cash plus advance is more than the bill total — reduce the cash received.', 'save'), 'Cash plus advance is more than the bill total — reduce the cash received.')

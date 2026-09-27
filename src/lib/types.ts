@@ -49,6 +49,35 @@ export type AccountLineRow = {
   credit_paisa: number
 }
 
+/** What deleting an entry would do (public.delete_entry_preview). Amounts in paisa, stock in kg. */
+export type DeletePreview = {
+  found: boolean
+  ref: string
+  blockers?: string[]
+  entries?: { ref: string; type: string; date: string; description: string; amount_paisa: number }[]
+  cash_before_paisa?: number
+  cash_change_paisa?: number
+  stock?: { batch: string; kg_before: number; kg_change: number; value_change_paisa: number }[] | null
+  customers?: { name: string; owes_before_paisa: number; owes_after_paisa: number }[] | null
+  suppliers_owed_before_paisa?: number
+  suppliers_owed_change_paisa?: number
+  advances_change_paisa?: number
+  batches_removed?: string[] | null
+  customers_removed?: string[] | null
+}
+
+/** A deleted entry kept for restore (public.v_deleted_entries). */
+export type DeletedEntry = {
+  id: number
+  deleted_at: string
+  deleted_by_name: string | null
+  reason: string
+  event_refs: string[]
+  summary: DeletePreview & { requested_ref?: string }
+  restored_at: string | null
+  restored_by_name: string | null
+}
+
 /** One day of the cash book (public.v_cash_days). */
 export type CashDay = { occurred_on: string; lines: number; in_paisa: number; out_paisa: number; opening_paisa: number; closing_paisa: number }
 

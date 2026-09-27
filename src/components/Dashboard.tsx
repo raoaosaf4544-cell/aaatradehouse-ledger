@@ -3,6 +3,7 @@ import { BookUser, HandCoins, PackageOpen, PlusCircle, RefreshCw, ShieldAlert, S
 import { engine } from '../lib/engine'
 import type { AccountBalance, DebtorRow, LedgerEntryRow, LedgerHealth, StockOnHand } from '../lib/types'
 import { Card, ErrorBanner, Kg, Money, SectionTitle, ShowMore, Spinner, StatCard, usePaged } from './ui'
+import { EntryMenu } from './EntryActions'
 
 /** Dashboard: every number read from database views. No client-side totals over long lists. */
 
@@ -49,6 +50,13 @@ export default function Dashboard({ go }: { go?: (tab: string) => void }) {
   useEffect(() => {
     load()
   }, [])
+
+  function refreshAfterDelete() {
+    setExpanded(null)
+    setLines({})
+    load()
+    events.reload()
+  }
 
   async function toggle(id: number) {
     setExpanded(expanded === id ? null : id)
@@ -232,6 +240,7 @@ export default function Dashboard({ go }: { go?: (tab: string) => void }) {
                   <th className="pb-2">Type</th>
                   <th className="pb-2">Description</th>
                   <th className="pb-2 text-right">Amount</th>
+                  <th className="pb-2"><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -252,10 +261,13 @@ export default function Dashboard({ go }: { go?: (tab: string) => void }) {
                       <td className="py-3 text-right font-mono tabular-nums">
                         {paisa(e.total_paisa)}
                       </td>
+                      <td className="py-1 pl-2 text-right">
+                        <EntryMenu entryRef={e.event_ref} onChanged={refreshAfterDelete} />
+                      </td>
                     </tr>
                     {expanded === e.id && (
                       <tr className="border-b border-slate-100 bg-slate-50/60">
-                        <td colSpan={5} className="px-4 py-3">
+                        <td colSpan={6} className="px-4 py-3">
                           {!lines[e.id] ? (
                             <Spinner label="Loading lines…" />
                           ) : (

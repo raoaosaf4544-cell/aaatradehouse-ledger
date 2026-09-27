@@ -468,3 +468,26 @@ grant execute on all functions in schema app to public, anon, authenticated;
 
 After undoing 3A the app still works for the signed-in user (it always sends `p_created_by`), but writes
 are no longer guarded and the anon key regains the old, unsafe access.
+
+## 17. Deleting entries (owner decision, 2026-09-28)
+
+The owner reversed the "never delete, only correct" rule for the two people who use the app. Deleting is
+built so nothing is lost and the books cannot be left broken (migrations `20260927194107`, `20260927194303`):
+
+- **One call, one transaction:** `public.delete_entry(ref, reason)` removes the whole entry — ledger lines,
+  stock movements, a batch it brought in, invoice + invoice lines, its dispatch (a sale always goes with its
+  own dispatch; a dispatch cannot be deleted alone), advance rows, a customer created with that sale and used
+  nowhere else, and the idempotency key. Batches that get stock back are re-opened. Never partial.
+- **Refused, in plain words, when something depends on it:** a correction points to it; salt from a batch it
+  brought in was already used; the customer has already paid more than they would owe without it; an advance
+  it recorded was already used; cash would go below zero on any day; it is the imported opening-stock record.
+- **Checked after every delete (and restore):** debits = credits, no negative cash day, stock value in the
+  ledger = batch records, no negative batch, customer or advance balance. Any failure cancels everything.
+- **Full copy:** `app.deleted_entries` keeps every removed or changed row as JSON with who, when, why and the
+  preview summary. `public.restore_entry(id)` puts it all back with the original ids and numbers.
+- **Preview:** `public.delete_entry_preview(ref)` (same plan as the delete) shows the entries, the cash /
+  stock kg / customer / supplier / advance changes and any blockers before the owner confirms.
+- **Who:** only allow-listed users through `app.require_user()`; JARVIS (`assistant`) is refused; anon: 401.
+- **In the app:** "…" → "Delete entry…" on Dashboard entries, Cash Book lines and invoices (Debtors & Sales);
+  reason required; Confirm. "Deleted entries" screen lists them with Restore.
+- Entry numbers are never reused, so a deleted entry leaves a gap in the EV / INV / DSP / BATCH numbers.

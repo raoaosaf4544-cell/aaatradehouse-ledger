@@ -28,6 +28,8 @@ export function friendlyMessage(error: unknown, kind: ErrorKind): string {
       : 'No signal — could not load. Check signal and try again.'
   }
   if (e.fromServer) {
+    // the delete / restore functions answer in plain words written for this app: show them as they are
+    if (/^Cannot (delete|restore):/.test(raw)) return raw.replace(/^Cannot (delete|restore): /, '')
     for (const [re, text] of RULES) if (re.test(raw)) return text
     return kind === 'save'
       ? 'The books refused this entry, so nothing was saved. Check the numbers and try again.'
