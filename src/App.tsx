@@ -25,8 +25,8 @@ type AppUser = { id: string; name: string; role: string }
 async function signOut() {
   clearOfflineCache() // remembered books never outlive the login
   engine.userId = null
-  const { error } = await supabase.auth.signOut()
-  if (error) await supabase.auth.signOut({ scope: 'local' }) // no signal: still sign out on this phone
+  // local: this device only. Rao and his father share one login, so a global sign-out would log out the other phone.
+  await supabase.auth.signOut({ scope: 'local' })
 }
 
 /** Gate: login screen until signed in; only accounts linked in app.users get the ledger. */
