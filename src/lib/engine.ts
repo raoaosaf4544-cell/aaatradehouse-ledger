@@ -17,11 +17,7 @@ import type {
   SaleRow,
   DispatchAllocationRow,
   DebtorRow,
-  FifoBatch,
   AccountLineRow,
-  SaleResult,
-  DispatchResult,
-  DispatchLineInput,
   AccountTotals,
   SalesTotals,
   LedgerHealth,
@@ -78,7 +74,7 @@ type AccountRow = { id: number; code: string; name: string }
 const OFFLINE_READS = [
   'listEvents', 'accountBalances', 'stockOnHand', 'batches', 'products', 'locations', 'openReviewItems',
   'eventLines', 'accountLines', 'accountTotals', 'customers', 'customerAdvanceBalance', 'sales', 'salesTotals',
-  'dispatchAllocations', 'debtors', 'fifoPool', 'ledgerHealth',
+  'dispatchAllocations', 'debtors', 'ledgerHealth',
 ] as const
 
 export class LedgerEngine {
@@ -424,105 +420,6 @@ export class LedgerEngine {
       .order('outstanding_paisa', { ascending: false })
     if (error) throw rpcError(error)
     return data as DebtorRow[]
-  }
-
-  /**
-   * FIFO pool for the dispatch form: open batches of this product at this
-   * location, oldest first, with exact book-value unit cost. Direct SQL view
-   * over app.fifo_pool so the client previews exactly what the engine will do.
-   */
-  async fifoPool(productCode: string, locationCode: string): Promise<FifoBatch[]> {
-    const { data, error } = await supabase
-      .from('v_batches')
-      .select('id, batch_code, opened_on, onhand_grams, value_paisa')
-      .eq('product_code', productCode)
-      .eq('location_code', locationCode)
-      .eq('status', 'open')
-      .gt('onhand_grams', 0)
-      .order('opened_on', { ascending: true })
-    if (error) throw rpcError(error)
-    return ((data ?? []) as { id: number; batch_code: string; opened_on: string; onhand_grams: number; value_paisa: number }[]).map(
-      (b) => ({
-        batch_id: b.id,
-        batch_code: b.batch_code,
-        opened_on: b.opened_on,
-        onhand_grams: b.onhand_grams,
-        unit_cost_ppk: b.onhand_grams > 0 ? Math.round(b.value_paisa / (b.onhand_grams / 1000)) : 0,
-      }),
-    )
-  }
-
-  /**
-   * Record an invoice through record_sale (SECURITY DEFINER). Money math —
-   * per-kg pricing, advance application, cash/AR split — happens in the DB.
-   */
-  async recordSale(input: {
-    /** One key per entry attempt; reused on every retry of that same entry. */
-    idempotencyKey: string
-    customerName: string
-    items: { productCode: string; qtyKg: number; unitPricePkrPerKg: number }[]
-    cashReceivedPkr: number
-    customerPhone?: string
-    occurredOn: string
-    note?: string
-  }): Promise<SaleResult> {
-    if (!input.customerName.trim()) throw new InvariantError('Customer name is required.')
-    if (input.items.length === 0) throw new InvariantError('At least one sale line is required.')
-    if (!(input.cashReceivedPkr >= 0)) throw new InvariantError('Cash received cannot be negative.')
-    const { data, error } = await saveRpc('record_sale', {
-      p_party: input.customerName.trim(),
-      p_items: input.items.map((it) => ({
-        product_code: it.productCode,
-        qty_grams: Math.round(it.qtyKg * 1000),
-        unit_price_paisa_per_kg: Math.round(it.unitPricePkrPerKg * 100),
-      })),
-      p_cash_received_paisa: Math.round(input.cashReceivedPkr * 100),
-      p_customer_phone: input.customerPhone?.trim() || null,
-      p_occurred_on: input.occurredOn,
-      p_note: input.note?.trim() || null,
-      p_idempotency_key: input.idempotencyKey,
-      p_created_by: this.createdBy(),
-    })
-    if (error) throw rpcError(error)
-    return data as SaleResult
-  }
-
-  /**
-   * Dispatch against an invoice through record_dispatch. FIFO allocation with
-   * per-batch FOR UPDATE locks, exact book-value COGS, batch auto-close.
-   */
-  async recordDispatch(input: {
-    /** One key per entry attempt; reused on every retry of that same entry. */
-    idempotencyKey: string
-    saleRef: string
-    lines: DispatchLineInput[]
-    occurredOn: string
-    note?: string
-  }): Promise<DispatchResult> {
-    if (input.lines.length === 0) throw new InvariantError('At least one dispatch line is required.')
-    const { data, error } = await saveRpc('record_dispatch', {
-      p_sale_ref: input.saleRef,
-      p_lines: input.lines.map((l) => ({
-        product_code: l.productCode,
-        qty_grams: Math.round(l.qtyKg * 1000),
-        location_code: l.locationCode,
-        ...(l.mode === 'manual'
-          ? {
-              override_reason: l.overrideReason?.trim() || '',
-              allocations: (l.allocations ?? []).map((a) => ({
-                batch_code: a.batchCode,
-                qty_grams: Math.round(a.qtyKg * 1000),
-              })),
-            }
-          : {}),
-      })),
-      p_occurred_on: input.occurredOn,
-      p_note: input.note?.trim() || null,
-      p_idempotency_key: input.idempotencyKey,
-      p_created_by: this.createdBy(),
-    })
-    if (error) throw rpcError(error)
-    return data as DispatchResult
   }
 
   /**
