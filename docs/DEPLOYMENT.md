@@ -24,29 +24,20 @@ Re-running the migrations is safe (idempotent), but the import script
 (`scripts/gen_phase1_import.py`) will fail loudly if the data no longer matches
 the Excel — that is by design.
 
-## 2. Vercel (hosting) — one-time manual setup
+## 2. Vercel (hosting) — LIVE since 2026-09-27
 
-The Freebuff toolchain has no Vercel connector, so this step is yours
-(~3 minutes):
-
-1. Push/sync the repo (already on GitHub:
-   `raoaosaf4544-cell/aaatradehouse-ledger`).
-2. Go to **vercel.com → Add New → Project** and import
-   `aaatradehouse-ledger`.
-3. Vercel auto-detects **Vite**. Leave build settings as-is
-   (`bun install` / `vite build`, output `dist`). `vercel.json` is included
-   for the SPA rewrite.
-4. Add **Environment Variables** (Production + Preview):
-   - `VITE_SUPABASE_URL` = `https://lceijfagzgmroxridgua.supabase.co`
-   - `VITE_SUPABASE_ANON_KEY` = the publishable key (find it in Supabase →
-     Settings → API; it is the `sb_publishable_…` key or the legacy `anon` JWT —
-     both are safe for browsers and already gated by RLS)
-   - `VITE_APP_VERSION` = e.g. `phase1`
-   - `VITE_SENTRY_DSN` = (optional, see below)
-5. Deploy. Every future `git push` to `main` redeploys automatically.
-
-> These keys are publishable by design: they can only read what RLS allows
-> (read-only) and write only through the invariant-guarded RPCs.
+- **URL:** https://aaatradehouse-ledger.vercel.app (default Vercel address; no custom domain, no DNS).
+- **Project:** `aaatradehouse-ledger` in team `raoaosaf4544-cell`, linked to GitHub
+  `raoaosaf4544-cell/aaatradehouse-ledger`; every push to `main` redeploys production.
+  Separate from the website project `aaatradehouse.com`, which is not touched.
+- **Build** (`vercel.json`): `bun install --frozen-lockfile`, `bun run build`, output `dist`,
+  SPA rewrite so refreshing any page works.
+- **Environment variables** (Production + Preview): only `VITE_SUPABASE_URL` and
+  `VITE_SUPABASE_ANON_KEY` (the `sb_publishable_…` key). Never a service-role key or database
+  password. No `VITE_SENTRY_DSN` yet (Sentry stays off until one is set).
+- **Supabase Auth → URL Configuration:** Site URL = the live URL; Redirect URLs =
+  `https://aaatradehouse-ledger.vercel.app/**` and `http://127.0.0.1:3000/**`. Sign-ups OFF.
+- **Sign-out** clears this device only (`scope: 'local'`): the owner and his father share one login.
 
 ## 3. Sentry (error tracking) — one-time manual step
 
