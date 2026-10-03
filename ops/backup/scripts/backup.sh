@@ -24,7 +24,9 @@ counts "$DB_URL" > "$work/live_after.txt"
 
 # 2. restore it into the throw-away database, grants included, exactly as an emergency restore would
 psql "$SCRATCH" -X -q -v ON_ERROR_STOP=1 -f scripts/scratch-prep.sql
-if pg_restore -l "$work/db.dump" | grep -q ' SCHEMA - public '; then
+# (list to a file first: piping into grep -q cuts pg_restore off and, with pipefail, the check silently fails)
+pg_restore -l "$work/db.dump" > "$work/toc.txt"
+if grep -q ' SCHEMA - public ' "$work/toc.txt"; then
   psql "$SCRATCH" -X -q -v ON_ERROR_STOP=1 -c 'drop schema public cascade'
 fi
 pg_restore --no-owner --exit-on-error -d "$SCRATCH" "$work/db.dump"

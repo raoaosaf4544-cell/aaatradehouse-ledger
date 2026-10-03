@@ -79,13 +79,14 @@ gpg asks for the passphrase: copy it from the password manager entry **AAA ledge
 ### 4. Make a fresh Supabase project
 1. https://supabase.com/dashboard → **New project** (free plan is fine). Choose a strong database password and save it
    in the password manager as `AAA ledger — NEW project database password`.
-2. When it is ready: **Connect** (top of the project page) → **Session pooler** → copy the connection string. Replace
+2. When it is ready: **Connect** (top of the project page) → **Session pooler** → press the **copy** button next to the
+   connection string (copy the whole string exactly as Supabase shows it; do not use any example from this page). Replace
    `[YOUR-PASSWORD]` with the password from step 1.
 
 ### 5. Restore into it
 In the terminal (put the connection string in quotes):
 ```bash
-export NEW_DB='postgresql://postgres.xxxxxxxx:PASSWORD@aws-0-xx.pooler.supabase.com:5432/postgres'
+export NEW_DB='PASTE-THE-WHOLE-SESSION-POOLER-STRING-HERE'   # copied from Supabase, never typed by hand
 psql "$NEW_DB" -c "create role jarvis_cloud nologin; grant jarvis_cloud to postgres; create role backup_reader login bypassrls; grant pg_read_all_data to backup_reader;"
 pg_restore --no-owner -d "$NEW_DB" ledger.dump
 ```
@@ -119,7 +120,8 @@ psql "$NEW_DB" -c "select sum(debit_paisa) = sum(credit_paisa) as balanced from 
 
 1. Supabase → **SQL Editor** → run (with a long random password from the password manager; letters and digits only):
    `alter role backup_reader with password 'PASTE-HERE';`
-2. Supabase → **Connect → Session pooler** → copy the string, then change the user part `postgres.<project-ref>` to
+2. Supabase → **Connect → Session pooler** → press the **copy** button (the real address is only shown there; never type
+   or copy an address from this README), then change the user part `postgres.<project-ref>` to
    `backup_reader.<project-ref>` and put the backup_reader password in place of `[YOUR-PASSWORD]`.
 3. This repo → **Settings → Secrets and variables → Actions → New repository secret**:
    - `SUPABASE_BACKUP_DB_URL` = the string from step 2
