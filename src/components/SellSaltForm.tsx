@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Users, Calculator } from 'lucide-react'
 import { engine } from '../lib/engine'
 import type { BatchRow, Customer, Product } from '../lib/types'
-import { BAG_SIZES, MAN_KG, lineKg, qtyWords, type QtyUnit } from '../lib/qty'
+import { BAG_SIZES, MAN_KG, fifoCostPaisa, lineKg, qtyWords, type QtyUnit } from '../lib/qty'
 import { SaveControls, useSafeSave } from './SafeSave'
 import {
   Card,
@@ -111,6 +111,14 @@ export default function SellSaltForm({ onPosted }: { onPosted: () => void }) {
   for (const l of parsed) if (l.product) askedG.set(l.product.code, (askedG.get(l.product.code) ?? 0) + Math.round(l.qty * 1000))
   const shortOf = (code: string) => Math.max(0, (askedG.get(code) ?? 0) - (stockG.get(code) ?? 0))
   const stockOk = [...askedG.keys()].every((code) => shortOf(code) === 0)
+
+  // what each line's salt cost (oldest batch first, after earlier lines of the same product) — warn below cost, never block
+  const lineCost = parsed.map((l, i) => {
+    if (!l.product || !l.qtyOk || shortOf(l.product.code) > 0) return null
+    const code = l.product.code
+    const skipG = parsed.slice(0, i).reduce((s, x) => s + (x.product?.code === code ? Math.round(x.qty * 1000) : 0), 0)
+    return fifoCostPaisa(batches.filter((b) => b.product_code === code), skipG, Math.round(l.qty * 1000))
+  })
 
   const revenuePaisa = parsed.reduce((s, l) => s + l.revenuePaisa, 0)
   const cashPaisa = Number.isFinite(Number(cashPkr)) && Number(cashPkr) > 0 ? Math.round(Number(cashPkr) * 100) : 0
@@ -312,6 +320,14 @@ export default function SellSaltForm({ onPosted }: { onPosted: () => void }) {
                         )}
                       </span>
                     </div>
+                  )}
+                  {l.billOk && lineCost[i] != null && l.revenuePaisa < lineCost[i]! && (
+                    <p role="alert" className="rounded-lg bg-amber-50 px-3 py-2 text-base font-semibold text-amber-900">
+                      ⚠ Below cost: you lose Rs {((lineCost[i]! - l.revenuePaisa) / 100).toLocaleString('en-PK', { maximumFractionDigits: 2 })} on this sale
+                      <span className="block text-sm font-normal">
+                        Cost Rs {(lineCost[i]! / 100 / l.qty).toLocaleString('en-PK', { maximumFractionDigits: 2 })}/kg · price Rs {l.perKg.toLocaleString('en-PK', { maximumFractionDigits: 2 })}/kg. You can still save.
+                      </span>
+                    </p>
                   )}
                   {l.product && shortOf(l.product.code) > 0 && (
                     <p role="alert" className="text-base font-semibold text-rose-700">
