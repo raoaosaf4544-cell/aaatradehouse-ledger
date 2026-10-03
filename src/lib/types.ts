@@ -195,7 +195,16 @@ export type BatchRow = {
 export type GradeOutput = {
   product_code: string
   qty_kg: number
-  value_pkr?: number
+}
+
+/** The database's crush-run figures (public.crush_run_preview) — the same formula the save uses. */
+export type CrushPreview = {
+  input_value_paisa: number
+  pool_paisa: number
+  wastage_value_paisa: number
+  graded_share_paisa: number
+  outputs: { product_code: string; product_name: string; qty_grams: number; value_paisa: number }[]
+  lines: { account: string; debit: number; credit: number }[]
 }
 
 export type PurchaseResult = {

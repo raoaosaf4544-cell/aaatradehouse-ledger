@@ -26,6 +26,7 @@ import type {
   CashLine,
   DeletePreview,
   DeletedEntry,
+  CrushPreview,
 } from './types'
 
 /**
@@ -70,6 +71,18 @@ function saveRpc(fn: string, args: Record<string, unknown>) {
   return supabase.rpc(fn, args).abortSignal(AbortSignal.timeout(SAVE_TIMEOUT_MS))
 }
 
+/** Crush-run arguments shared by the save and the preview. Only kg go to the database; it computes every value. */
+function crushArgs(i: { inputBatchCode: string; inputQtyKg: number; outputs: GradeOutput[]; wastageKg: number; conversionCostPkr: number; payCash: boolean }) {
+  return {
+    p_input_batch_code: i.inputBatchCode,
+    p_input_qty_grams: Math.round(i.inputQtyKg * 1000),
+    p_outputs: i.outputs.map((o) => ({ product_code: o.product_code, qty_grams: Math.round(o.qty_kg * 1000) })),
+    p_wastage_grams: Math.round(i.wastageKg * 1000),
+    p_conversion_cost_paisa: Math.round(i.conversionCostPkr * 100),
+    p_pay_cash: i.payCash,
+  }
+}
+
 /** What the database confirms for an entry saved under an idempotency key. */
 export type ConfirmedEntry = { event_ref: string; occurred_on: string; total_paisa: number }
 
@@ -82,7 +95,7 @@ type AccountRow = { id: number; code: string; name: string }
 const OFFLINE_READS = [
   'listEvents', 'accountBalances', 'stockOnHand', 'batches', 'products', 'locations', 'openReviewItems',
   'eventLines', 'accountLines', 'accountTotals', 'customers', 'customerAdvanceBalance', 'sales', 'salesTotals',
-  'dispatchAllocations', 'debtors', 'ledgerHealth', 'cashDay', 'deletedEntries',
+  'dispatchAllocations', 'debtors', 'ledgerHealth', 'cashDay', 'deletedEntries', 'supplierNames',
 ] as const
 
 export class LedgerEngine {
@@ -333,10 +346,9 @@ export class LedgerEngine {
   }
 
   /**
-   * Record a crush/processing run: consumes input batch at its weighted-average
-   * cost, creates one child batch per output grade, and books wastage at its
-   * direct weight-share of the total cost pool. The DB enforces mass and cost
-   * conservation; any violation aborts the whole run atomically.
+   * Record a crush run. The database prices everything (one formula, shared with crushRunPreview): cost pool =
+   * salt taken out + conversion cost; wastage gets its weight share; the grades share the rest by weight.
+   * On credit, the supplier (crushing contractor) is required and recorded on the entry.
    */
   async recordProcessRun(input: {
     /** One key per entry attempt; reused on every retry of that same entry. */
@@ -347,30 +359,47 @@ export class LedgerEngine {
     wastageKg: number
     conversionCostPkr: number
     payCash: boolean
+    supplier?: string
     occurredOn: string
     note?: string
   }): Promise<ProcessRunResult> {
     if (!(input.inputQtyKg > 0)) throw new InvariantError('Input quantity must be positive.')
     if (input.outputs.length === 0) throw new InvariantError('At least one output grade is required.')
     if (!(input.wastageKg >= 0)) throw new InvariantError('Wastage cannot be negative.')
+    if (!input.payCash && input.conversionCostPkr > 0 && !input.supplier?.trim()) {
+      throw new InvariantError('On credit: pick or type who is owed the crushing cost.')
+    }
     const { data, error } = await saveRpc('record_process_run', {
-      p_input_batch_code: input.inputBatchCode,
-      p_input_qty_grams: Math.round(input.inputQtyKg * 1000),
-      p_outputs: input.outputs.map((o) => ({
-        product_code: o.product_code,
-        qty_grams: Math.round(o.qty_kg * 1000),
-        ...(o.value_pkr && o.value_pkr > 0 ? { value_paisa: Math.round(o.value_pkr * 100) } : {}),
-      })),
-      p_wastage_grams: Math.round(input.wastageKg * 1000),
-      p_conversion_cost_paisa: Math.round(input.conversionCostPkr * 100),
-      p_pay_cash: input.payCash,
+      ...crushArgs(input),
       p_occurred_on: input.occurredOn,
       p_note: input.note?.trim() || null,
       p_created_by: this.createdBy(),
       p_idempotency_key: input.idempotencyKey,
+      p_supplier: input.supplier?.trim() || null,
     })
     if (error) throw rpcError(error)
     return data as ProcessRunResult
+  }
+
+  /** The database's figures for a crush run, without saving anything. */
+  async crushRunPreview(input: {
+    inputBatchCode: string
+    inputQtyKg: number
+    outputs: GradeOutput[]
+    wastageKg: number
+    conversionCostPkr: number
+    payCash: boolean
+  }): Promise<CrushPreview> {
+    const { data, error } = await supabase.rpc('crush_run_preview', crushArgs(input))
+    if (error) throw rpcError(error)
+    return data as CrushPreview
+  }
+
+  /** Supplier names already used in the books (for "pick or type"). */
+  async supplierNames(): Promise<string[]> {
+    const { data, error } = await supabase.from('v_events_with_party').select('party_name').eq('party_type', 'supplier').limit(1000)
+    if (error) throw rpcError(error)
+    return [...new Set((data ?? []).map((r: { party_name: string | null }) => r.party_name?.trim()).filter((n): n is string => !!n))].sort()
   }
 
   /* ---------- Phase 3: Sales & Dispatch ---------- */

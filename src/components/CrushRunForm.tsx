@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { engine } from '../lib/engine'
-import type { BatchRow, Product } from '../lib/types'
+import type { BatchRow, CrushPreview, Product } from '../lib/types'
 import { SaveControls, useSafeSave } from './SafeSave'
 import {
   Badge,
@@ -17,11 +17,9 @@ import {
 } from './ui'
 
 /**
- * Crush Run: raw/bulk salt in → graded salt out + weighed wastage.
- * The father enters only weights and the conversion cost; the engine prices
- * every grade by weight-share (AUTO mode) and enforces mass + cost conservation.
- * The preview mirrors the engine's exact formulas; the database recomputes
- * and blocks the save if anything disagrees.
+ * Crush Run: rock salt in → graded salt out + weighed wastage.
+ * The father enters only weights and the conversion cost. The database prices every grade (cost pool by weight,
+ * wastage its weight share); the preview is the database's own answer, so it can never differ from the save.
  */
 
 type GradeRow = { key: number; productCode: string; qtyKg: string }
@@ -38,29 +36,32 @@ export default function CrushRunForm({ onPosted }: { onPosted: () => void }) {
   const [wastageKg, setWastageKg] = useState('')
   const [conversionPkr, setConversionPkr] = useState('')
   const [payCash, setPayCash] = useState(true)
+  const [supplier, setSupplier] = useState('')
+  const [suppliers, setSuppliers] = useState<string[]>([])
   const [note, setNote] = useState('')
   const safe = useSafeSave()
   const [loadError, setLoadError] = useState<unknown>(null)
+  const [preview, setPreview] = useState<CrushPreview | null>(null)
+  const [previewError, setPreviewError] = useState<unknown>(null)
 
   useEffect(() => {
     Promise.all([engine.batches(), engine.products()])
       .then(([b, p]) => {
         setBatches(b)
         setProducts(p)
-        const gradeable = p.filter((x) => x.form === 'bulk_processed' || x.form === 'packaged')
+        const gradeable = p.filter((x) => x.form === 'bulk_processed')
         setGrades((g) => (g[0].productCode ? g : [{ ...g[0], productCode: gradeable[0]?.code ?? '' }]))
       })
       .catch(setLoadError)
+    engine.supplierNames().then(setSuppliers).catch(() => setSuppliers([]))
   }, [])
 
-  const gradeProducts = useMemo(
-    () => products?.filter((p) => p.form === 'bulk_processed' || p.form === 'packaged') ?? [],
-    [products],
-  )
-  const availableBatches = useMemo(
-    () => batches?.filter((b) => b.onhand_grams > 0) ?? [],
-    [batches],
-  )
+  // crush grades come out; only rock salt goes in
+  const gradeProducts = useMemo(() => products?.filter((p) => p.form === 'bulk_processed') ?? [], [products])
+  const availableBatches = useMemo(() => {
+    const rock = new Set(products?.filter((p) => p.form === 'raw').map((p) => p.code))
+    return batches?.filter((b) => b.onhand_grams > 0 && rock.has(b.product_code)) ?? []
+  }, [batches, products])
   const selectedBatch = batches?.find((b) => b.batch_code === inputBatch)
 
   const inputG = Math.round((Number(inputKg) || 0) * 1000)
@@ -72,54 +73,36 @@ export default function CrushRunForm({ onPosted }: { onPosted: () => void }) {
   const massOk = inputG > 0 && outG + wastageG === inputG
   const qtyWithinStock = !!selectedBatch && inputG <= selectedBatch.onhand_grams
 
-  /* ---- mirror of the engine's pricing formulas (for the live preview) ---- */
-  const preview = useMemo(() => {
-    if (!selectedBatch || !qtyWithinStock || inputG <= 0) return null
-    const onhand = selectedBatch.onhand_grams
-    const bookValue = selectedBatch.value_paisa
-    const inputValue = onhand > 0 ? Math.round((bookValue * inputG) / onhand) : 0
-    const pool = inputValue + conversionP
-    const wastValue =
-      wastageG > 0 ? Math.round((pool * wastageG) / (wastageG + outG)) : 0
-    const remaining = pool - wastValue
+  const gradesOk =
+    gradeRows.every((g) => g.qtyG > 0 && !!g.productCode) && new Set(gradeRows.map((g) => g.productCode)).size === gradeRows.length
+  const supplierOk = payCash || conversionP === 0 || supplier.trim().length > 0
+  const valid = !!inputBatch && massOk && qtyWithinStock && gradesOk && supplierOk
 
-    // AUTO weight-share, cumulative rounding — identical to the engine
-    let cumG = 0
-    let assignedCum = 0
-    const values: number[] = []
-    gradeRows.forEach((g, i) => {
-      cumG += g.qtyG
-      const assigned =
-        i < gradeRows.length - 1
-          ? Math.round((remaining * cumG) / outG)
-          : remaining - assignedCum
-      assignedCum += assigned
-      values.push(assigned)
-    })
-
-    const invIn = accountFor(products?.find((x) => x.code === selectedBatch.product_code)?.form, products)
-    const lineList = [
-      { account: invIn, debit: undefined as number | undefined, credit: inputValue },
-    ]
-    gradeRows.forEach((g, i) => {
-      const p = products?.find((x) => x.code === g.productCode)
-      lineList.push({ account: accountFor(p?.form, products), debit: values[i], credit: undefined })
-    })
-    if (wastValue > 0) {
-      lineList.push({ account: '5250', debit: wastValue, credit: undefined })
+  // The preview is the database's own calculation (the same function the save uses), asked again 0.4 s after typing stops.
+  const previewKey = JSON.stringify([inputBatch, inputG, wastageG, conversionP, payCash, gradeRows.map((g) => [g.productCode, g.qtyG])])
+  useEffect(() => {
+    setPreview(null)
+    setPreviewError(null)
+    if (!inputBatch || !massOk || !qtyWithinStock || !gradesOk) return
+    let alive = true
+    const t = setTimeout(() => {
+      engine
+        .crushRunPreview({
+          inputBatchCode: inputBatch,
+          inputQtyKg: inputG / 1000,
+          outputs: gradeRows.map((g) => ({ product_code: g.productCode, qty_kg: g.qtyG / 1000 })),
+          wastageKg: wastageG / 1000,
+          conversionCostPkr: conversionP / 100,
+          payCash,
+        })
+        .then((p) => alive && setPreview(p))
+        .catch((e) => alive && setPreviewError(e))
+    }, 400)
+    return () => {
+      alive = false
+      clearTimeout(t)
     }
-    if (conversionP > 0) {
-      lineList.push({ account: payCash ? '1000' : '2000', debit: undefined, credit: conversionP })
-    }
-    return { lineList, inputValue, pool, wastValue, values }
-  }, [selectedBatch, inputG, outG, wastageG, conversionP, payCash, products, qtyWithinStock]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const valid =
-    !!inputBatch &&
-    massOk &&
-    qtyWithinStock &&
-    gradeRows.every((g) => g.qtyG > 0 && !!g.productCode) &&
-    new Set(gradeRows.map((g) => g.productCode)).size === gradeRows.length
+  }, [previewKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function clear() {
     setInputKg('')
@@ -127,6 +110,7 @@ export default function CrushRunForm({ onPosted }: { onPosted: () => void }) {
     setConversionPkr('')
     setGrades([{ key: (rowKey += 1), productCode: gradeProducts[0]?.code ?? '', qtyKg: '' }])
     setNote('')
+    setSupplier('')
   }
 
   async function submit(e: React.FormEvent) {
@@ -136,14 +120,11 @@ export default function CrushRunForm({ onPosted }: { onPosted: () => void }) {
       engine.recordProcessRun({
         inputBatchCode: inputBatch,
         inputQtyKg: Number(inputKg),
-        outputs: gradeRows.map((g) => ({
-          product_code: g.productCode,
-          qty_kg: Number(g.qtyKg) || 0,
-          value_pkr: 0, // AUTO pricing — engine prices by weight-share
-        })),
+        outputs: gradeRows.map((g) => ({ product_code: g.productCode, qty_kg: Number(g.qtyKg) || 0 })),
         wastageKg: Number(wastageKg) || 0,
         conversionCostPkr: Number(conversionPkr) || 0,
         payCash,
+        supplier: payCash ? undefined : supplier.trim() || undefined,
         occurredOn: date,
         note: note.trim() || undefined,
         idempotencyKey: key,
@@ -258,8 +239,8 @@ export default function CrushRunForm({ onPosted }: { onPosted: () => void }) {
                 {massOk ? 'Mass checks out ✓' : `Mismatch: ${((outG + wastageG) / 1000).toLocaleString()} kg out vs ${(inputG / 1000).toLocaleString()} kg in`}
               </Badge>
               {preview && (
-                <span className="text-slate-500">
-                  Cost pool PKR {((preview.pool) / 100).toLocaleString()} — wastage share PKR {(preview.wastValue / 100).toLocaleString()}, graded share PKR {(preview.pool - preview.wastValue) / 100 > 0 ? ((preview.pool - preview.wastValue) / 100).toLocaleString() : '0'}
+                <span className="text-slate-600">
+                  Cost pool PKR {(preview.pool_paisa / 100).toLocaleString()} — wastage share PKR {(preview.wastage_value_paisa / 100).toLocaleString()}, graded share PKR {(preview.graded_share_paisa / 100).toLocaleString()}
                 </span>
               )}
             </div>
@@ -307,24 +288,42 @@ export default function CrushRunForm({ onPosted }: { onPosted: () => void }) {
           </Field>
         </div>
 
+        {!payCash && (
+          <Field label="Who is owed the crushing cost?" hint="Pick from the list or type a new name (the crushing contractor).">
+            <input
+              type="text"
+              list="crush-suppliers"
+              value={supplier}
+              onChange={(e) => setSupplier(e.target.value)}
+              placeholder="e.g. Shida crusher"
+              className={inputCls}
+              required={conversionP > 0}
+            />
+            <datalist id="crush-suppliers">
+              {suppliers.map((s) => <option key={s} value={s} />)}
+            </datalist>
+          </Field>
+        )}
+
         <Field label="Note (optional)">
-          <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. day shift, mesh 30 run" className={inputCls} />
+          <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. day shift" className={inputCls} />
         </Field>
 
+        {previewError != null && <ErrorBanner error={previewError} />}
         {preview && (
           <>
             <div className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              <strong>Engine pricing:</strong> grades are priced by weight automatically. No need to enter any rupee
-              values for the grades — the database computes them and blocks the save if anything disagrees.
+              <strong>Priced by the database:</strong> the grades share the cost by weight and wastage takes its weight
+              share. These are the exact figures that will be saved.
             </div>
             <JournalPreview
-              lines={preview.lineList.map((l) => ({
+              lines={preview.lines.map((l) => ({
                 account: l.account,
                 accountName: accountName(l.account),
-                debit: l.debit,
-                credit: l.credit,
+                debit: l.debit || undefined,
+                credit: l.credit || undefined,
               }))}
-              okLabel="The engine re-prices everything server-side; these figures use the identical formulas."
+              okLabel="Worked out by the database — the save uses the same calculation."
             />
           </>
         )}
@@ -337,15 +336,3 @@ export default function CrushRunForm({ onPosted }: { onPosted: () => void }) {
   )
 }
 
-function accountFor(productForm: string | undefined, products: Product[] | undefined): string {
-  const form =
-    productForm ??
-    products?.find((p) => p.form === 'bulk_processed')?.form // fallback shouldn't happen
-  switch (form) {
-    case 'raw': return '1200'
-    case 'bulk_processed': return '1210'
-    case 'packaged': return '1220'
-    case 'packaging_material': return '1230'
-    default: return '1500'
-  }
-}
