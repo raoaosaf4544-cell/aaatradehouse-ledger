@@ -1,0 +1,44 @@
+name: Nightly backup
+on:
+  schedule:
+    - cron: '0 21 * * *'   # 02:00 Pakistan time
+  workflow_dispatch: {}
+permissions:
+  contents: write
+concurrency:
+  group: nightly-backup
+  cancel-in-progress: false
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      scratch:   # throw-away database for the restore test; gone when the run ends
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: scratch
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PostgreSQL 17 tools
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSo /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+      - name: Back up, restore-test, encrypt
+        env:
+          DB_URL: ${{ secrets.SUPABASE_BACKUP_DB_URL }}
+          PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+          SCRATCH: postgresql://postgres:scratch@localhost:5432/postgres
+        run: bash scripts/backup.sh
+      - name: Keep it in this private repo
+        run: |
+          git config user.name 'nightly-backup'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add backups
+          git commit -q -m "backup $(TZ=Asia/Karachi date +%F)"
+          git push -q
