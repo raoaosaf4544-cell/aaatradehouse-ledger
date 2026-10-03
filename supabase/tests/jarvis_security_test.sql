@@ -9,6 +9,8 @@
 --   4. The JARVIS login: the six RPCs work (dedupe, claim new->taken, finish once); the jarvis tables, views and
 --      read functions are refused; app.* writes are refused.
 --   5. Rao's login and anon: the six RPCs are refused.
+--   6. jarvis_mirror_approval accepts exactly the laptop's six statuses.
+--   7. Stale-books flags: the CFO's public.v_books_freshness and the bot's v_status agree with a recount from the tables.
 do $test$
 declare
   c_jarvis constant text := '{"sub":"f188c46e-4ca5-4d0d-adfc-848c1328d4e1","role":"authenticated"}';
@@ -20,7 +22,8 @@ declare
     'select public.jarvis_mirror_approval(''APR-1'', ''t'', ''d'', ''pending'', ''h'')',
     'select * from public.jarvis_claim_decisions()',
     'select public.jarvis_finish_decision(1, true, ''x'')'];
-  expected jsonb; actual jsonb; problems text[] := '{}'; checks int := 0;
+  c_statuses constant text[] := array['pending', 'approved', 'rejected', 'executing', 'done', 'failed'];
+  expected jsonb; actual jsonb; problems text[] := '{}'; checks int := 0; fresh jsonb; figures jsonb;
   q text; qs text[]; qs_dml text[]; v_id bigint; v_id2 bigint; n int; v_claim jsonb;
 begin
   -- 1. The CFO figures, as the JARVIS login reads them (the CFO uses this login).
@@ -36,6 +39,7 @@ begin
                  'unpaid_over_7d_paisa', u.unpaid_over_7d_paisa, 'last_sale_on', u.last_sale_on) order by u.customer_name)
                  from public.v_udhaar_aging u));
   reset role;
+  figures := expected;
   if expected->'runway' is null or expected->'cash'->>'cash_paisa' is null then
     problems := problems || 'the JARVIS login sees no CFO figures'::text;
   end if;
@@ -99,6 +103,25 @@ begin
   if v_id is null or v_id <> v_id2 then problems := problems || format('dedupe failed: %s vs %s', v_id, v_id2); end if;
   perform public.jarvis_heartbeat('test task');
   perform public.jarvis_mirror_approval('APR-999999', 'test_tool', 'Test approval', 'pending', 'hash');
+  -- 6. the laptop's six statuses are accepted; anything else is refused
+  foreach q in array c_statuses loop
+    checks := checks + 1;
+    begin
+      perform public.jarvis_mirror_approval('APR-999998', 'test_tool', 'Status test', q, 'hash');
+    exception when others then
+      problems := problems || format('laptop status %s refused: %s', q, sqlerrm);
+    end;
+  end loop;
+  foreach q in array array['running', 'expired', 'cancelled', 'Pending'] loop
+    checks := checks + 1;
+    begin
+      perform public.jarvis_mirror_approval('APR-999998', 'test_tool', 'Status test', q, 'hash');
+      problems := problems || ('status accepted but not a laptop value: ' || q);
+    exception when check_violation then null;
+    end;
+  end loop;
+  -- 7. the CFO's freshness view, as this login reads it
+  select to_jsonb(f) - 'as_of' into fresh from public.v_books_freshness f;
   foreach q in array array['select 1 from jarvis.outbox', 'select 1 from jarvis.state', 'select * from jarvis.read_cash()', 'select 1 from jarvis.v_status',
                            'insert into jarvis.audit (source, event) values (''x'', ''x'')'] || qs_dml loop
     checks := checks + 1;
@@ -184,6 +207,20 @@ begin
     problems := problems || 'heartbeat / shutdown / finish did not record'::text;
   end if;
 
+  -- 7. Stale-books flags: CFO view = bot's v_status = a recount from the tables.
+  set local role jarvis_cloud;
+  select jsonb_build_object('newest_entry_on', v.newest_entry_on, 'newest_sale_on', v.newest_sale_on,
+                            'sales_stale', v.sales_stale, 'books_stale', v.books_stale) into actual from jarvis.v_status v;
+  reset role;
+  expected := (select jsonb_build_object('newest_entry_on', x.e, 'newest_sale_on', x.s,
+                 'sales_stale', coalesce(x.today - x.s > 5, true), 'books_stale', coalesce(x.today - x.e > 3, true))
+                 from (select (now() at time zone 'Asia/Karachi')::date today,
+                              (select max(occurred_on) from app.events) e, (select max(occurred_on) from app.sales) s) x);
+  checks := checks + 1;
+  if fresh is distinct from expected or actual is distinct from expected then
+    problems := problems || format('freshness differs: recount %s, CFO view %s, v_status %s', expected, fresh, actual);
+  end if;
+
   -- 5. Rao's login and anon may not call the six RPCs.
   perform set_config('request.jwt.claims', c_rao, true);
   set local role authenticated;
@@ -213,8 +250,8 @@ begin
   reset role;
 
   if cardinality(problems) = 0 then
-    raise exception 'JARVIS TEST PASS: % checks (% app/public statements refused to jarvis_cloud). Figures: %',
-      checks, cardinality(qs), expected;
+    raise exception 'JARVIS TEST PASS: % checks (% app/public statements refused to jarvis_cloud). Freshness: %. Figures: %',
+      checks, cardinality(qs), expected, figures;
   end if;
   raise exception 'JARVIS TEST FAIL: % problem(s) in % checks: %', cardinality(problems), checks, to_jsonb(problems);
 end $test$;
