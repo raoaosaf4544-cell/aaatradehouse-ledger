@@ -2,7 +2,12 @@ name: Nightly backup
 on:
   schedule:
     - cron: '0 21 * * *'   # 02:00 Pakistan time
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      break_check:
+        description: 'TEST ONLY - change one figure in the throw-away restored copy to prove the check goes red (live is never touched; nothing is kept)'
+        type: boolean
+        default: false
 permissions:
   contents: write
 concurrency:
@@ -34,6 +39,7 @@ jobs:
           DB_URL: ${{ secrets.SUPABASE_BACKUP_DB_URL }}
           PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
           SCRATCH: postgresql://postgres:scratch@localhost:5432/postgres
+          BREAK_CHECK: ${{ inputs.break_check }}
         run: bash scripts/backup.sh
       - name: Keep it in this private repo
         run: |

@@ -16,6 +16,13 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 mkdir -p "$dir"
 counts() { psql "$1" -X -A -t -q -v ON_ERROR_STOP=1 -f scripts/counts.sql; }
+# one line for the log: entries, cash (1000), debtors (1100), suppliers owed (2000), balance check, stock, fingerprint
+summary() {
+  awk -F'|' '$1=="events_total"{e=$2} $1=="account"&&$2=="1000"{c=$3} $1=="account"&&$2=="1100"{d=$3}
+             $1=="account"&&$2=="2000"{s=0-$3} $1=="debits_equal_credits"{b=$2} $1=="stock"{st=st" "$2"="($3/1000)" kg"}
+             $1=="fingerprint"{f=$2}
+             END{printf "entries %s | cash %.2f | debtors %.2f | suppliers owed %.2f | debits=credits %s | stock%s | fingerprint %s", e, c/100, d/100, s/100, b, st, f}' "$1"
+}
 
 # 1. the dump (schemas app, public, jarvis), with the live counts taken just before and just after it
 counts "$DB_URL" > "$work/live_before.txt"
@@ -30,7 +37,20 @@ if grep -q ' SCHEMA - public ' "$work/toc.txt"; then
   psql "$SCRATCH" -X -q -v ON_ERROR_STOP=1 -c 'drop schema public cascade'
 fi
 pg_restore --no-owner --exit-on-error -d "$SCRATCH" "$work/db.dump"
+
+# TEST SWITCH (manual runs only): change one figure in the THROW-AWAY copy, to prove the comparison goes red.
+# Only "$SCRATCH" is touched here - never the live database. Rs 1 more on both lines of one two-line entry, so the
+# copy still balances and only the line-by-line comparison can catch it.
+if [ "${BREAK_CHECK:-false}" = "true" ]; then
+  echo "TEST SWITCH ON: changing one figure in the throw-away restored copy on purpose (live is not touched)."
+  psql "$SCRATCH" -X -q -v ON_ERROR_STOP=1 -c "update app.ledger_entries
+       set debit_paisa = debit_paisa + case when debit_paisa > 0 then 100 else 0 end,
+           credit_paisa = credit_paisa + case when credit_paisa > 0 then 100 else 0 end
+     where event_id = (select event_id from app.ledger_entries group by event_id having count(*) = 2 order by event_id limit 1)"
+fi
 counts "$SCRATCH" > "$work/restored.txt"
+echo "Restored copy: $(summary "$work/restored.txt")"
+echo "Live books:    $(summary "$work/live_after.txt")"
 
 # 3. the restored copy must be complete and identical to the live books
 tables=$(grep -c '^table|' "$work/restored.txt" || true)

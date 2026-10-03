@@ -11,6 +11,12 @@ select 'events_total|' || count(*) from app.events;
 select format('account|%s|%s', a.code, coalesce(sum(le.debit_paisa - le.credit_paisa), 0))
   from app.accounts a left join app.ledger_entries le on le.account_id = a.id
  group by a.code order by a.code collate "C";
+select format('stock|%s|%s', b.batch_code,
+              sum(case m.direction when 'in' then m.qty_grams when 'out' then -m.qty_grams else 0 end))
+  from app.movements m join app.batches b on b.id = m.batch_id
+ group by b.batch_code
+having sum(case m.direction when 'in' then m.qty_grams when 'out' then -m.qty_grams else 0 end) <> 0
+ order by b.batch_code collate "C";
 select 'debits_equal_credits|' || (coalesce(sum(debit_paisa), 0) = coalesce(sum(credit_paisa), 0)) from app.ledger_entries;
 select 'fingerprint|' || md5(
   coalesce((select string_agg(e.event_ref || ':' || le.entry_seq || ':' || a.code || ':' || le.debit_paisa || ':' || le.credit_paisa, ','
