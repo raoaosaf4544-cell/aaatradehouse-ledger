@@ -75,6 +75,12 @@ const RULES: Rule[] = [
   [/null value in column/i, 'A required figure was missing, so nothing was saved.'],
 
   // corrections and review
+  [/nothing changed - the correct version is the same/i, 'Nothing changed — the correct version is the same as the entry.'],
+  [/(\S+) was already corrected by (.+?)\. Delete that correction first/i,
+    (m) => `${m[1]} was already corrected by ${m[2]}. Delete that correction first (Delete shows what changes), then correct ${m[1]}.`],
+  [/Only money entries can be corrected here/i, 'Only money entries can be corrected here. For sales, purchases, crush runs and payments: delete it and enter it again.'],
+  [/cannot be used in a money-entry correction/i, 'That account cannot be used here (customer, supplier, advance or stock accounts).'],
+  [/write why this entry is being corrected/i, 'Write why this entry is being corrected.'],
   [/may only be dated on or before the original/i, 'A correction cannot be dated after the entry it corrects.'],
   [/is itself a correction/i, 'That entry is already a correction — correct the original entry instead.'],
   [/review item .* is not open/i, 'That review item was already resolved.'],

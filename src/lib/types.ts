@@ -72,6 +72,25 @@ export type DeletePreview = {
   needs_word?: string | null
 }
 
+/** A money entry as the correction form opens it (public.correct_entry_preview without lines). */
+export type CorrectionStart = {
+  ref: string
+  date: string
+  type: string
+  description: string
+  lines: { account: string; name: string; debit: number; credit: number }[]
+  /** why this entry cannot be corrected here (null = it can) */
+  blocker: string | null
+}
+
+/** What a correction will post (preview) or posted (save). */
+export type CorrectionPlan = {
+  plan: { kind: 'fix' | 'reverse' | 'repost'; date: string; lines: { account: string; debit: number; credit: number }[] }[]
+  accounts?: { code: string; name: string; before_paisa: number; after_paisa: number }[]
+  event_refs?: string[]
+  duplicate?: boolean
+}
+
 /** A deleted entry kept for restore (public.v_deleted_entries). */
 export type DeletedEntry = {
   id: number

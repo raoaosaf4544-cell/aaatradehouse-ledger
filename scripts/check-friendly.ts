@@ -37,6 +37,9 @@ assert.equal(say('INVARIANT VIOLATION: batch BATCH-075 did not exist yet on 2026
   'Not saved: Batch BATCH-075 had not arrived yet on 10 Sep 2026 — it arrived 14 Sep 2026. Change the date or the batch.')
 assert.equal(say('INVARIANT VIOLATION: date 2026-10-04 is in the future (today is 2026-10-03)'), 'Not saved: 4 Oct 2026 is in the future. Pick today or an earlier day.')
 assert.equal(say('INVARIANT VIOLATION: date 2026-08-22 is before the books start (23 Aug 2026)'), 'Not saved: The books start on 23 Aug 2026. Pick that day or later.')
+assert.equal(say('INVARIANT VIOLATION: nothing changed - the correct version is the same as the entry'), 'Not saved: Nothing changed — the correct version is the same as the entry.')
+assert.equal(say('INVARIANT VIOLATION: CL-20260823-003 was already corrected by EV-000441. Delete that correction first (it shows what changes), then correct CL-20260823-003.'),
+  'Not saved: CL-20260823-003 was already corrected by EV-000441. Delete that correction first (Delete shows what changes), then correct CL-20260823-003.')
 for (const m of [
   'INVARIANT VIOLATION: supplier name is required', 'INVARIANT VIOLATION: unknown product code X', 'INVARIANT VIOLATION: quantity must be positive (line 1)',
   'INVARIANT VIOLATION: a correction may only be dated on or before the original (2026-09-30 is after 2026-09-24)',

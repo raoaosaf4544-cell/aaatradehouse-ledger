@@ -28,6 +28,8 @@ import type {
   DeletePreview,
   DeletedEntry,
   CrushPreview,
+  CorrectionStart,
+  CorrectionPlan,
 } from './types'
 
 /**
@@ -590,6 +592,43 @@ export class LedgerEngine {
     const { data, error } = await saveRpc('delete_entry', { p_ref: ref, p_reason: reason.trim(), p_confirm: confirm?.trim() || null })
     if (error) throw rpcError(error)
     return data as { event_refs: string[]; deleted_id: number; already_deleted?: boolean }
+  }
+
+  /** The entry as the correction form opens it, or why it cannot be corrected here. */
+  async correctionStart(ref: string): Promise<CorrectionStart> {
+    const { data, error } = await supabase.rpc('correct_entry_preview', { p_ref: ref })
+    if (error) throw rpcError(error)
+    return data as CorrectionStart
+  }
+
+  /** What correcting the entry to this version would post — worked out by the database, nothing saved. */
+  async correctionPreview(ref: string, date: string, lines: { account: string; debit?: number; credit?: number }[]): Promise<CorrectionPlan> {
+    const { data, error } = await supabase.rpc('correct_entry_preview', { p_ref: ref, p_date: date, p_lines: lines })
+    if (error) throw rpcError(error)
+    return data as CorrectionPlan
+  }
+
+  /**
+   * Correct a money entry: the database posts one correction (same date) or a reversal + the correct entry (other
+   * date), together in one transaction. The original stays as it was. Safe to repeat with the same key.
+   */
+  async correctEntry(input: {
+    idempotencyKey: string
+    ref: string
+    date: string
+    lines: { account: string; debit?: number; credit?: number }[]
+    reason: string
+  }): Promise<CorrectionPlan> {
+    if (!input.reason.trim()) throw new InvariantError('Write why this entry is being corrected.')
+    const { data, error } = await saveRpc('correct_entry', {
+      p_ref: input.ref,
+      p_date: input.date,
+      p_lines: input.lines,
+      p_reason: input.reason.trim(),
+      p_idempotency_key: input.idempotencyKey,
+    })
+    if (error) throw rpcError(error)
+    return data as CorrectionPlan
   }
 
   /** Put a deleted entry back exactly as it was (same numbers). Safe to repeat. */

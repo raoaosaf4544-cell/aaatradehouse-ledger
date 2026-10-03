@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
-import { MoreHorizontal, Trash2 } from 'lucide-react'
+import { MoreHorizontal, PencilLine, Trash2 } from 'lucide-react'
 import { engine } from '../lib/engine'
 import { friendlyMessage } from '../lib/friendly'
 import { useOffline } from '../lib/offline'
 import type { DeletePreview } from '../lib/types'
+import { CorrectEntryDialog } from './CorrectEntry'
 import { Money, Spinner, dateInWords, inputCls } from './ui'
 
 /**
- * "…" menu on an entry. Delete is two steps away on purpose: "…" → "Delete entry…" → a preview of exactly what
+ * "…" menu on an entry: "Correct this entry…" (money entries; the database adds a correction, the original stays) and
+ * "Delete entry…". Delete is two steps away on purpose: "…" → "Delete entry…" → a preview of exactly what
  * will change, a required reason and a Confirm button. The database does the delete in one transaction, keeps a
  * full copy (restorable from "Deleted entries") and cancels everything if any check of the books fails.
  */
@@ -15,6 +17,7 @@ export function EntryMenu({ entryRef, onChanged }: { entryRef: string; onChanged
   const offline = useOffline()
   const [open, setOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [correcting, setCorrecting] = useState(false)
   const wrap = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -44,6 +47,16 @@ export function EntryMenu({ entryRef, onChanged }: { entryRef: string; onChanged
             type="button"
             onClick={() => {
               setOpen(false)
+              setCorrecting(true)
+            }}
+            className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-base font-semibold text-slate-800 hover:bg-slate-100"
+          >
+            <PencilLine className="h-5 w-5" /> Correct this entry…
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false)
               setDeleting(true)
             }}
             className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-base font-semibold text-rose-800 hover:bg-rose-50"
@@ -51,6 +64,15 @@ export function EntryMenu({ entryRef, onChanged }: { entryRef: string; onChanged
             <Trash2 className="h-5 w-5" /> Delete entry…
           </button>
         </div>
+      )}
+      {correcting && (
+        <CorrectEntryDialog
+          entryRef={entryRef}
+          onClose={(changed) => {
+            setCorrecting(false)
+            if (changed) onChanged()
+          }}
+        />
       )}
       {deleting && (
         <DeleteEntryDialog
