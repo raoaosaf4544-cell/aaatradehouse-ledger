@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Users, Calculator } from 'lucide-react'
 import { engine } from '../lib/engine'
-import type { Customer, Product } from '../lib/types'
+import type { BatchRow, Customer, Product } from '../lib/types'
 import { BAG_SIZES, MAN_KG, lineKg, qtyWords, type QtyUnit } from '../lib/qty'
 import { SaveControls, useSafeSave } from './SafeSave'
 import {
@@ -32,10 +32,15 @@ type LineDraft = {
 
 const emptyLine = (): LineDraft => ({ productCode: '', unit: 'kg', count: '', bagKg: '', billTotalPkr: '' })
 
+/** record_udhaar_sale sends the salt out from this location (its default), so only stock here can be sold. */
+const PLANT = 'KHANEWAL_PLANT'
+const kgText = (g: number) => (g / 1000).toLocaleString('en-PK', { maximumFractionDigits: 3 })
+
 export default function SellSaltForm({ onPosted }: { onPosted: () => void }) {
   const [date, setDate] = useState(todayPK)
   const [customers, setCustomers] = useState<Customer[] | null>(null)
   const [products, setProducts] = useState<Product[] | null>(null)
+  const [batches, setBatches] = useState<BatchRow[]>([])
   const [customerChoice, setCustomerChoice] = useState<'existing' | 'new'>('existing')
   const [existingCustomerId, setExistingCustomerId] = useState('')
   const [newName, setNewName] = useState('')
@@ -48,13 +53,22 @@ export default function SellSaltForm({ onPosted }: { onPosted: () => void }) {
   const safe = useSafeSave()
 
   useEffect(() => {
-    Promise.all([engine.customers(), engine.products()])
-      .then(([c, p]) => {
+    Promise.all([engine.customers(), engine.products(), engine.batches()])
+      .then(([c, p, b]) => {
         setCustomers(c)
         setProducts(p.filter((x) => x.form !== 'packaging_material'))
+        setBatches(b.filter((x) => x.location_code === PLANT && x.status === 'open' && x.onhand_grams > 0))
       })
       .catch(setError)
   }, [])
+
+  // grams in stock at the plant per product; products with none are not offered
+  const stockG = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const b of batches) m.set(b.product_code, (m.get(b.product_code) ?? 0) + b.onhand_grams)
+    return m
+  }, [batches])
+  const sellable = useMemo(() => products?.filter((p) => (stockG.get(p.code) ?? 0) > 0) ?? [], [products, stockG])
 
   const selectedCustomer = customers?.find((c) => String(c.id) === existingCustomerId) ?? null
   const customerName = customerChoice === 'new' ? newName.trim() : selectedCustomer?.name ?? ''
@@ -92,6 +106,12 @@ export default function SellSaltForm({ onPosted }: { onPosted: () => void }) {
     [lines, products],
   )
 
+  // kg asked for per product across all lines, against what the plant holds
+  const askedG = new Map<string, number>()
+  for (const l of parsed) if (l.product) askedG.set(l.product.code, (askedG.get(l.product.code) ?? 0) + Math.round(l.qty * 1000))
+  const shortOf = (code: string) => Math.max(0, (askedG.get(code) ?? 0) - (stockG.get(code) ?? 0))
+  const stockOk = [...askedG.keys()].every((code) => shortOf(code) === 0)
+
   const revenuePaisa = parsed.reduce((s, l) => s + l.revenuePaisa, 0)
   const cashPaisa = Number.isFinite(Number(cashPkr)) && Number(cashPkr) > 0 ? Math.round(Number(cashPkr) * 100) : 0
   const advanceApply = Math.min(Math.max(advancePaisa, 0), revenuePaisa)
@@ -99,7 +119,7 @@ export default function SellSaltForm({ onPosted }: { onPosted: () => void }) {
   const cashOk = cashPaisa + advanceApply <= revenuePaisa
   const linesValid = parsed.length > 0 && parsed.every((l) => l.qtyOk && l.billOk && l.product)
   const customerValid = customerChoice === 'new' ? newName.trim().length > 0 : !!selectedCustomer
-  const valid = customerValid && linesValid && cashOk
+  const valid = customerValid && linesValid && cashOk && stockOk
 
   const saleLines = [
     { account: '1000', debit: Math.min(cashPaisa, revenuePaisa), credit: 0 },
@@ -205,12 +225,15 @@ export default function SellSaltForm({ onPosted }: { onPosted: () => void }) {
               const set = (patch: Partial<LineDraft>) => setLines((ls) => ls.map((x, j) => (j === i ? { ...x, ...patch } : x)))
               return (
                 <div key={i} className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <Field label={`Product${parsed.length > 1 ? ` (line ${i + 1})` : ''}`}>
+                  <Field
+                    label={`Product${parsed.length > 1 ? ` (line ${i + 1})` : ''}`}
+                    hint={products && sellable.length === 0 ? 'No salt in stock at the plant — record a purchase or crush run first.' : undefined}
+                  >
                     <select value={l.productCode} onChange={(e) => set({ productCode: e.target.value })} className={inputCls} required>
                       <option value="">— choose —</option>
-                      {products?.map((p) => (
+                      {sellable.map((p) => (
                         <option key={p.code} value={p.code}>
-                          {p.name}
+                          {p.name} — {kgText(stockG.get(p.code) ?? 0)} kg in stock
                         </option>
                       ))}
                     </select>
@@ -289,6 +312,12 @@ export default function SellSaltForm({ onPosted }: { onPosted: () => void }) {
                         )}
                       </span>
                     </div>
+                  )}
+                  {l.product && shortOf(l.product.code) > 0 && (
+                    <p role="alert" className="text-base font-semibold text-rose-700">
+                      Only {kgText(stockG.get(l.product.code) ?? 0)} kg of {l.product.name} in stock
+                      {parsed.filter((x) => x.product?.code === l.product!.code).length > 1 ? ' for all its lines together' : ''} — reduce the quantity.
+                    </p>
                   )}
                   {parsed.length > 1 && (
                     <button
