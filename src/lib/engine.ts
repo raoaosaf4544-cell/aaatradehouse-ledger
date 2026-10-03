@@ -585,9 +585,9 @@ export class LedgerEngine {
    * Delete a whole entry. One transaction in the database: full copy saved, books re-checked, cancelled if any
    * check fails. Safe to repeat: a second call answers already_deleted.
    */
-  async deleteEntry(ref: string, reason: string): Promise<{ event_refs: string[]; deleted_id: number; already_deleted?: boolean }> {
+  async deleteEntry(ref: string, reason: string, confirm?: string): Promise<{ event_refs: string[]; deleted_id: number; already_deleted?: boolean }> {
     if (!reason.trim()) throw new InvariantError('Write why this entry is being deleted.')
-    const { data, error } = await saveRpc('delete_entry', { p_ref: ref, p_reason: reason.trim() })
+    const { data, error } = await saveRpc('delete_entry', { p_ref: ref, p_reason: reason.trim(), p_confirm: confirm?.trim() || null })
     if (error) throw rpcError(error)
     return data as { event_refs: string[]; deleted_id: number; already_deleted?: boolean }
   }

@@ -64,6 +64,12 @@ export type DeletePreview = {
   advances_change_paisa?: number
   batches_removed?: string[] | null
   customers_removed?: string[] | null
+  /** every account the delete changes, balance on its normal side */
+  accounts?: { code: string; name: string; before_paisa: number; change_paisa: number; after_paisa: number }[]
+  /** when the entry is a correction: what it corrects, and other corrections of the same original that would stay */
+  corrections?: { ref: string; original_ref: string; original_description: string | null; others_staying: string | null }[]
+  /** the word to type before the database allows the delete ('UNDO' for a correction) */
+  needs_word?: string | null
 }
 
 /** A deleted entry kept for restore (public.v_deleted_entries). */

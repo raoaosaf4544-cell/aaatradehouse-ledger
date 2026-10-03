@@ -85,6 +85,7 @@ function DeleteEntryDialog({ entryRef, onClose: close }: { entryRef: string; onC
   const [preview, setPreview] = useState<DeletePreview | null>(null)
   const [loadError, setLoadError] = useState<unknown>(null)
   const [reason, setReason] = useState('')
+  const [word, setWord] = useState('')
   const [phase, setPhase] = useState<'ready' | 'deleting' | 'unclear' | 'done'>('ready')
   const [error, setError] = useState<string | null>(null)
   const [deletedRefs, setDeletedRefs] = useState<string[]>([])
@@ -104,11 +105,11 @@ function DeleteEntryDialog({ entryRef, onClose: close }: { entryRef: string; onC
   }, [entryRef])
 
   async function confirmDelete() {
-    if (phase === 'deleting' || !reason.trim()) return
+    if (phase === 'deleting' || !reason.trim() || !wordOk) return
     setPhase('deleting')
     setError(null)
     try {
-      const r = await engine.deleteEntry(entryRef, reason)
+      const r = await engine.deleteEntry(entryRef, reason, preview?.needs_word ? word : undefined)
       setDeletedRefs(r.event_refs ?? [])
       doneRef.current = true
       setPhase('done')
@@ -121,8 +122,10 @@ function DeleteEntryDialog({ entryRef, onClose: close }: { entryRef: string; onC
   }
 
   const blockers = preview?.blockers ?? []
-  const cashBefore = preview?.cash_before_paisa ?? 0
-  const cashChange = preview?.cash_change_paisa ?? 0
+  const needsWord = preview?.needs_word ?? null
+  const wordOk = !needsWord || word.trim().toUpperCase() === needsWord
+  const accounts = preview?.accounts ?? []
+  const corrections = preview?.corrections ?? []
   const supBefore = preview?.suppliers_owed_before_paisa ?? 0
   const supChange = preview?.suppliers_owed_change_paisa ?? 0
 
@@ -204,14 +207,37 @@ function DeleteEntryDialog({ entryRef, onClose: close }: { entryRef: string; onC
               </>
             ) : (
               <>
+                {corrections.length > 0 && (
+                  <div role="alert" className="rounded-xl border-2 border-rose-400 bg-rose-50 p-4 text-rose-900">
+                    {corrections.map((c) => (
+                      <p key={c.ref} className="font-bold">
+                        This is a correction of {c.original_ref}
+                        {c.original_description ? ` (${c.original_description})` : ''}. Deleting it brings back the original mistake —
+                        see the account changes below.
+                        {c.others_staying && (
+                          <span className="mt-1 block font-normal">
+                            {c.others_staying} (also a correction of {c.original_ref}) stays. Deleting only part of a correction leaves the books half-corrected.
+                          </span>
+                        )}
+                      </p>
+                    ))}
+                  </div>
+                )}
+
                 <section>
-                  <h3 className="font-semibold text-slate-800">What will change:</h3>
+                  <h3 className="font-semibold text-slate-800">What will change in each account:</h3>
                   <ul className="mt-1 divide-y divide-slate-100">
-                    <Change
-                      label="Cash on hand"
-                      before={<Money paisa={cashBefore} />}
-                      after={<><Money paisa={cashBefore + cashChange} />{cashChange === 0 && ' (no change)'}</>}
-                    />
+                    {accounts.map((a) => (
+                      <Change key={a.code} label={`${a.name} (${a.code})`} before={<Money paisa={a.before_paisa} />} after={<Money paisa={a.after_paisa} />} />
+                    ))}
+                    {!accounts.some((a) => a.code === '1000') && <li className="py-1.5 text-slate-700">Cash on hand: no change</li>}
+                  </ul>
+                </section>
+
+                <section>
+                  {((preview.stock?.length ?? 0) > 0 || (preview.customers?.length ?? 0) > 0 || supChange !== 0 ||
+                    (preview.advances_change_paisa ?? 0) !== 0) && <h3 className="font-semibold text-slate-800">Stock and people:</h3>}
+                  <ul className="mt-1 divide-y divide-slate-100">
                     {(preview.stock ?? []).map((s) => (
                       <Change
                         key={s.batch}
@@ -260,6 +286,21 @@ function DeleteEntryDialog({ entryRef, onClose: close }: { entryRef: string; onC
                   />
                 </label>
 
+                {needsWord && (
+                  <label className="block">
+                    <span className="mb-1.5 block font-semibold text-rose-800">Type {needsWord} to confirm you want the original mistake back</span>
+                    <input
+                      type="text"
+                      value={word}
+                      onChange={(e) => setWord(e.target.value)}
+                      disabled={phase === 'deleting'}
+                      autoCapitalize="characters"
+                      autoComplete="off"
+                      className={inputCls}
+                    />
+                  </label>
+                )}
+
                 {error && (
                   <div role="alert" className="rounded-xl border-2 border-rose-300 bg-rose-50 p-4 text-rose-900">
                     <div className="font-bold">{phase === 'unclear' ? 'Not confirmed' : 'Not deleted'}</div>
@@ -273,7 +314,7 @@ function DeleteEntryDialog({ entryRef, onClose: close }: { entryRef: string; onC
                   <button
                     type="button"
                     onClick={confirmDelete}
-                    disabled={!reason.trim() || phase === 'deleting'}
+                    disabled={!reason.trim() || !wordOk || phase === 'deleting'}
                     className="min-h-11 rounded-xl bg-rose-700 px-4 text-lg font-bold text-white hover:bg-rose-800 disabled:bg-slate-300"
                   >
                     {phase === 'deleting' ? 'Deleting…' : 'Delete entry'}
