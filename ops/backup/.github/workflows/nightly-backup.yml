@@ -42,9 +42,16 @@ jobs:
           BREAK_CHECK: ${{ inputs.break_check }}
         run: bash scripts/backup.sh
       - name: Keep it in this private repo
+        if: always()   # also keeps an UNVERIFIED copy when the restore test failed (the run still ends red)
         run: |
           git config user.name 'nightly-backup'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add backups
-          git commit -q -m "backup $(TZ=Asia/Karachi date +%F)"
+          if git diff --cached --quiet; then echo "Nothing to keep."; exit 0; fi
+          if git diff --cached --name-only | grep -q UNVERIFIED; then
+            msg="UNVERIFIED backup $(TZ=Asia/Karachi date +%F) - restore test failed, use only if no verified copy exists"
+          else
+            msg="backup $(TZ=Asia/Karachi date +%F)"
+          fi
+          git commit -q -m "$msg"
           git push -q

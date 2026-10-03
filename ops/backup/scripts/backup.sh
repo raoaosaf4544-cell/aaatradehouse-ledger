@@ -2,6 +2,7 @@
 # Nightly backup of the AAA ledger: dump -> restore into a throw-away database -> compare every table's row count,
 # every account balance and the books fingerprint with the live database -> encrypt -> prove it decrypts -> keep.
 # A missing secret, an empty or short backup, or ANY difference stops the run with an error (GitHub emails the owner).
+# If the dump itself worked, it is still kept, encrypted and named .UNVERIFIED, so there is always a recent copy.
 # No figures are printed to the log: only table/account names when something differs.
 set -euo pipefail
 : "${DB_URL:?secret SUPABASE_BACKUP_DB_URL is not set}"
@@ -29,14 +30,36 @@ counts "$DB_URL" > "$work/live_before.txt"
 pg_dump "$DB_URL" -Fc -n app -n public -n jarvis -f "$work/db.dump"
 counts "$DB_URL" > "$work/live_after.txt"
 
+# encrypt the dump to a file and prove it opens again with the same passphrase
+printf '%s' "$PASSPHRASE" > "$work/pass"
+encrypt_to() {
+  gpg --batch --yes --quiet --pinentry-mode loopback --passphrase-file "$work/pass" --symmetric --cipher-algo AES256 -o "$1" "$work/db.dump" \
+    && gpg --batch --quiet --pinentry-mode loopback --passphrase-file "$work/pass" --decrypt "$1" | cmp -s - "$work/db.dump" \
+    && (cd "$(dirname "$1")" && sha256sum "$(basename "$1")" > "$(basename "$1").sha256")
+}
+
+# The dump worked but the restore test did not prove it: keep it, clearly marked UNVERIFIED, and fail the run red.
+# (Owner decision 4 Oct 2026: better an unproven copy than none. Use it only if no verified copy exists.)
+keep_unverified() {
+  echo "::error::$1"
+  local u="$dir/aaa-ledger-$day.UNVERIFIED.dump.gpg"
+  if encrypt_to "$u"; then
+    echo "::error::The dump was kept as $u - NOT verified. Use it only if no verified copy exists."
+  else
+    rm -f "$u" "$u.sha256"
+    echo "::error::Could not keep even an unverified copy."
+  fi
+  exit 1
+}
+
 # 2. restore it into the throw-away database, grants included, exactly as an emergency restore would
-psql "$SCRATCH" -X -q -v ON_ERROR_STOP=1 -f scripts/scratch-prep.sql
+psql "$SCRATCH" -X -q -v ON_ERROR_STOP=1 -f scripts/scratch-prep.sql || keep_unverified "Could not prepare the throw-away database."
 # (list to a file first: piping into grep -q cuts pg_restore off and, with pipefail, the check silently fails)
-pg_restore -l "$work/db.dump" > "$work/toc.txt"
+pg_restore -l "$work/db.dump" > "$work/toc.txt" || keep_unverified "Could not read the dump's contents list."
 if grep -q ' SCHEMA - public ' "$work/toc.txt"; then
-  psql "$SCRATCH" -X -q -v ON_ERROR_STOP=1 -c 'drop schema public cascade'
+  psql "$SCRATCH" -X -q -v ON_ERROR_STOP=1 -c 'drop schema public cascade' || keep_unverified "Could not clear the throw-away database."
 fi
-pg_restore --no-owner --exit-on-error -d "$SCRATCH" "$work/db.dump"
+pg_restore --no-owner --exit-on-error -d "$SCRATCH" "$work/db.dump" || keep_unverified "The dump could not be restored (see the pg_restore lines above)."
 
 # TEST SWITCH (manual runs only): change one figure in the THROW-AWAY copy, to prove the comparison goes red.
 # Only "$SCRATCH" is touched here - never the live database. Rs 1 more on both lines of one two-line entry, so the
@@ -48,7 +71,7 @@ if [ "${BREAK_CHECK:-false}" = "true" ]; then
            credit_paisa = credit_paisa + case when credit_paisa > 0 then 100 else 0 end
      where event_id = (select event_id from app.ledger_entries group by event_id having count(*) = 2 order by event_id limit 1)"
 fi
-counts "$SCRATCH" > "$work/restored.txt"
+counts "$SCRATCH" > "$work/restored.txt" || keep_unverified "Could not read the restored copy."
 echo "Restored copy: $(summary "$work/restored.txt")"
 echo "Live books:    $(summary "$work/live_after.txt")"
 
@@ -56,23 +79,19 @@ echo "Live books:    $(summary "$work/live_after.txt")"
 tables=$(grep -c '^table|' "$work/restored.txt" || true)
 events=$(grep '^events_total|' "$work/restored.txt" | cut -d'|' -f2)
 if [ "${tables:-0}" -lt 20 ] || [ "${events:-0}" -lt 200 ]; then
-  echo "::error::Backup is empty or short: ${tables:-0} tables, ${events:-0} entries restored. Nothing was kept."
-  exit 1
+  keep_unverified "Backup is empty or short: ${tables:-0} tables, ${events:-0} entries restored."
 fi
-grep -q '^debits_equal_credits|true$' "$work/restored.txt" || { echo "::error::Restored books do not balance. Nothing was kept."; exit 1; }
+grep -q '^debits_equal_credits|true$' "$work/restored.txt" || keep_unverified "Restored books do not balance."
 if ! cmp -s "$work/restored.txt" "$work/live_before.txt" && ! cmp -s "$work/restored.txt" "$work/live_after.txt"; then
-  echo "::error::The restored copy differs from the live books. Nothing was kept. Differences in:"
+  echo "Differences in:"
   diff "$work/live_after.txt" "$work/restored.txt" | grep '^[<>]' | cut -d'|' -f1-2 | sort -u || true
-  exit 1
+  keep_unverified "The restored copy differs from the live books."
 fi
 
-# 4. encrypt, and prove the file opens again with the same passphrase
-printf '%s' "$PASSPHRASE" > "$work/pass"
-gpg --batch --yes --quiet --pinentry-mode loopback --passphrase-file "$work/pass" --symmetric --cipher-algo AES256 -o "$out" "$work/db.dump"
-if ! gpg --batch --quiet --pinentry-mode loopback --passphrase-file "$work/pass" --decrypt "$out" | cmp -s - "$work/db.dump"; then
-  rm -f "$out"
+# 4. verified: encrypt and keep it
+if ! encrypt_to "$out"; then
+  rm -f "$out" "$out.sha256"
   echo "::error::The encrypted file did not decrypt back to the same dump. Nothing was kept."
   exit 1
 fi
-(cd "$dir" && sha256sum "$(basename "$out")" > "$(basename "$out").sha256")
 echo "Backup OK: $tables tables and $events entries restored and matched the live books; saved $out"

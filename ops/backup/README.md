@@ -17,8 +17,15 @@ What the nightly check proves before a file is kept:
 - it is not empty or short (at least 20 tables and 200 entries);
 - the encrypted file decrypts back to exactly the same copy.
 
-If any check fails, nothing is kept, the run turns red and GitHub emails the owner. **A red run means: tell Claude/Rao
-the same day.** A missed night is not a disaster (the older files are still here), but it must not be ignored.
+If any check fails, the run turns red and GitHub emails the owner. **A red run means: tell Claude/Rao the same day.**
+If the copy itself was made but could not be proven, it is still kept, encrypted, with **UNVERIFIED** in its name:
+
+```
+backups/2026/10/aaa-ledger-2026-10-05.UNVERIFIED.dump.gpg   ← NOT proven by the restore test
+```
+
+**Use an UNVERIFIED file only if no verified copy exists** (or the verified ones are too old to help), and check the
+restored books carefully (step 5 below). A verified file is always the first choice.
 
 What is **not** in the backup: the two login accounts (Supabase Auth). After an emergency restore they are created
 again (step 6 below). Everything in the books is in the backup.
