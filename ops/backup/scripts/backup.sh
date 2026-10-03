@@ -39,7 +39,7 @@ if [ "${tables:-0}" -lt 20 ] || [ "${events:-0}" -lt 200 ]; then
   echo "::error::Backup is empty or short: ${tables:-0} tables, ${events:-0} entries restored. Nothing was kept."
   exit 1
 fi
-grep -q '^debits_equal_credits|t$' "$work/restored.txt" || { echo "::error::Restored books do not balance. Nothing was kept."; exit 1; }
+grep -q '^debits_equal_credits|true$' "$work/restored.txt" || { echo "::error::Restored books do not balance. Nothing was kept."; exit 1; }
 if ! cmp -s "$work/restored.txt" "$work/live_before.txt" && ! cmp -s "$work/restored.txt" "$work/live_after.txt"; then
   echo "::error::The restored copy differs from the live books. Nothing was kept. Differences in:"
   diff "$work/live_after.txt" "$work/restored.txt" | grep '^[<>]' | cut -d'|' -f1-2 | sort -u || true
