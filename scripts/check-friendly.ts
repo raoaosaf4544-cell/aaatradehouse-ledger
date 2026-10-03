@@ -9,14 +9,43 @@ assert.equal(friendlyMessage({ message: 'TypeError: Failed to fetch', definite: 
 assert.equal(friendlyMessage({ message: 'AbortError', definite: false }, 'load'), 'No signal — could not load. Check signal and try again.')
 
 // known refusals -> plain sentences
-assert.match(friendlyMessage(server('INVARIANT VIOLATION: Cash on Hand would go negative (balance -500 paisa)'), 'save'), /^Not enough cash/)
-assert.match(friendlyMessage(server('INVARIANT VIOLATION: stock negative for batch 3 at location 1 (qty -2000 g)'), 'save'), /^Not enough salt/)
-assert.match(friendlyMessage(server('INVARIANT VIOLATION: payment 500.00 exceeds Haji Ali\'s outstanding receivable of 40.00 - overpayments belong on Customer Advances, not here'), 'save'), /more than this customer owes/)
+assert.match(friendlyMessage(server('INVARIANT VIOLATION: Cash on Hand would go negative (balance -500 paisa)'), 'save'), /^Not saved: Not enough cash/)
+assert.match(friendlyMessage(server('INVARIANT VIOLATION: stock negative for batch 3 at location 1 (qty -2000 g)'), 'save'), /^Not saved: Not enough salt/)
+assert.equal(friendlyMessage(server('INVARIANT VIOLATION: payment 500.00 exceeds Haji Alis outstanding receivable of 40.00 - overpayments belong on Customer Advances, not here'), 'save'),
+  'Not saved: That is more than Haji Ali owes (Rs 40). Extra money goes on Customer Advances.')
+
+// the real reason, with its numbers (messages exactly as the database words them)
+const say = (raw: string) => friendlyMessage(server(raw), 'save')
+assert.equal(say('INVARIANT VIOLATION: insufficient eligible stock of SALT_ROCK_COARSE at KHANEWAL_PLANT - need 600.0 kg more, nothing compatible left (FIFO pool exhausted)'),
+  'Not saved: Not enough Coarse Salt (daana) in stock — 600 kg short.')
+assert.equal(say('INVARIANT VIOLATION: crushed kg (990.000) + wastage (1.000) must equal kg in (1000.000)'),
+  'Not saved: Crushed kg (990) + wastage (1) must equal kg in (1,000).')
+assert.equal(say('INVARIANT VIOLATION: only 13078.0 kg of Rock Salt (whole / dalay) in batch BATCH-001'),
+  'Not saved: Only 13,078 kg of Rock Salt (whole / dalay) in batch BATCH-001.')
+assert.equal(say('INVARIANT VIOLATION: on credit needs the supplier who is owed the crushing cost'), 'Not saved: On credit: pick or type who is owed the crushing cost.')
+assert.equal(say('INVARIANT VIOLATION: Rock Salt — Mesh Grade (generic) is not a crush output grade'),
+  'Not saved: Rock Salt — Mesh Grade (generic) cannot come out of a crush — choose Fine Powder or Coarse.')
+assert.equal(say('INVARIANT VIOLATION: cost components sum to 1000.00 but landed cost is 1200.00 - they must match exactly (no double counting)'),
+  'Not saved: The cost parts add up to Rs 1,000 but the total cost is Rs 1,200 — they must match.')
+assert.equal(say('INVARIANT VIOLATION: line 1 requests 600.0 kg but invoice INV-00050 has only 40.0 kg left to dispatch for SALT_BULK'),
+  'Not saved: Invoice INV-00050 has only 40 kg left to send, not 600 kg.')
+assert.equal(say('INVARIANT VIOLATION: wastage cannot be negative'), 'Not saved: The wastage cannot be below 0.')
+assert.equal(say('null value in column "value_paisa" of relation "movements" violates not-null constraint'), 'Not saved: A required figure was missing, so nothing was saved.')
+assert.equal(say('CONCURRENCY: another dispatch changed the same stock - nothing was saved, please retry'),
+  'Not saved: Someone saved a change to the same stock at the same moment — nothing was saved. Tap Retry.')
+for (const m of [
+  'INVARIANT VIOLATION: supplier name is required', 'INVARIANT VIOLATION: unknown product code X', 'INVARIANT VIOLATION: quantity must be positive (line 1)',
+  'INVARIANT VIOLATION: a correction may only be dated on or before the original (2026-09-30 is after 2026-09-24)',
+  'INVARIANT VIOLATION: event 12 unbalanced (debit 5, credit 6 paisa)', 'INVARIANT VIOLATION: at least one sale line is required',
+]) {
+  const t = say(m)
+  assert.ok(t.startsWith('Not saved: ') && !/INVARIANT|paisa|_/.test(t), `${m} -> ${t}`)
+}
 assert.match(friendlyMessage(server('Not authorised'), 'save'), /not allowed/)
 assert.match(friendlyMessage(server('JWT expired'), 'load'), /sign-in has expired/)
 
 // anything else from the server: general sentence, and never the raw text
-const raw = 'INVARIANT VIOLATION: something internal (debit 5, credit 6 paisa)'
+const raw = 'INVARIANT VIOLATION: something internal (code 5)'
 const msg = friendlyMessage(server(raw), 'save')
 assert.equal(msg, 'The books refused this entry, so nothing was saved. Check the numbers and try again.')
 assert.ok(!msg.includes('INVARIANT') && !msg.includes('paisa'))

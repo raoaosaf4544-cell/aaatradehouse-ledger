@@ -1,21 +1,90 @@
 /**
- * Plain-language messages. Raw database text is never shown to the user: server refusals are matched
- * to a short sentence, anything unmatched gets a general one. Our own form checks (already plain) pass through.
+ * Plain-language messages. Raw database text is never shown to the user: every known refusal is turned into a short
+ * sentence that gives the real reason (with its numbers); anything unmatched gets a general one (and Sentry gets the
+ * raw text, so a rule can be added). Our own form checks (already plain) pass through.
  */
 export type ErrorKind = 'save' | 'load'
 
 type ErrLike = { message?: string; definite?: boolean; fromServer?: boolean }
 
-const RULES: [RegExp, string][] = [
+// ponytail: names by code for messages only; add a line here when a product is added
+const PRODUCT_NAMES: Record<string, string> = {
+  SALT_ROCK: 'Rock Salt (whole / dalay)',
+  SALT_BULK: 'Fine Powder Salt',
+  SALT_ROCK_COARSE: 'Coarse Salt (daana)',
+}
+const product = (code: string) => PRODUCT_NAMES[code] ?? code
+const kg = (s: string) => Number(s).toLocaleString('en-PK', { maximumFractionDigits: 3 })
+const rs = (s: string) => `Rs ${Number(s).toLocaleString('en-PK', { maximumFractionDigits: 2 })}`
+
+type Rule = [RegExp, string | ((m: RegExpMatchArray) => string)]
+
+const RULES: Rule[] = [
+  // money
   [/Cash on Hand would go negative/i, 'Not enough cash in the books for this. Check the amount, or record the money that came in first.'],
-  [/stock negative|not enough (compatible )?stock|insufficient stock|exceeds .*on hand/i, 'Not enough salt in stock for this.'],
-  [/did not exist yet|opened on/i, 'That batch had not arrived yet on that date.'],
+  [/payment ([\d.]+) exceeds (.+?)s outstanding receivable of ([\d.]+)/i,
+    (m) => `That is more than ${m[2].replace(/'$/, '')} owes (${rs(m[3])}). Extra money goes on Customer Advances.`],
   [/exceeds .*outstanding receivable/i, 'That is more than this customer owes.'],
+  [/cash \(.*\) plus advance application .* exceeds invoice total/i, 'Cash received plus advance is more than the bill total.'],
+  [/advance application .* exceeds available advance/i, 'The customer does not hold that much advance.'],
+  [/cost components sum to ([\d.]+) but landed cost is ([\d.]+)/i,
+    (m) => `The cost parts add up to ${rs(m[1])} but the total cost is ${rs(m[2])} — they must match.`],
+  [/unbalanced|not balanced/i, 'Debits and credits do not match, so nothing was saved.'],
+
+  // stock
+  [/insufficient eligible stock of (\S+) at \S+ - need ([\d.]+) kg more/i,
+    (m) => `Not enough ${product(m[1])} in stock — ${kg(m[2])} kg short.`],
+  [/batch (\S+) has only ([\d.]+) kg on hand/i, (m) => `Batch ${m[1]} has only ${kg(m[2])} kg left.`],
+  [/only ([\d.]+) kg of (.+) in batch (\S+)/i, (m) => `Only ${kg(m[1])} kg of ${m[2]} in batch ${m[3]}.`],
+  [/stock negative for batch/i, 'Not enough salt in stock for this.'],
+  [/not enough (compatible )?stock|insufficient stock|exceeds .*on hand/i, 'Not enough salt in stock for this.'],
+  [/line \S+ requests ([\d.]+) kg but invoice (\S+) has only ([\d.]+) kg left/i,
+    (m) => `Invoice ${m[2]} has only ${kg(m[3])} kg left to send, not ${kg(m[1])} kg.`],
+  [/did not exist yet|opened on/i, 'That batch had not arrived yet on that date.'],
+  [/CONCURRENCY/, 'Someone saved a change to the same stock at the same moment — nothing was saved. Tap Retry.'],
+
+  // crush runs
+  [/crushed kg \(([\d.]+)\) \+ wastage \(([\d.]+)\) must equal kg in \(([\d.]+)\)/i,
+    (m) => `Crushed kg (${kg(m[1])}) + wastage (${kg(m[2])}) must equal kg in (${kg(m[3])}).`],
+  [/mass conservation|conservation failed/i, 'The weights do not add up: kg in must equal kg out plus wastage.'],
+  [/on credit needs the supplier/i, 'On credit: pick or type who is owed the crushing cost.'],
+  [/only rock salt can be crushed/i, 'Only Rock Salt can be crushed.'],
+  [/(.+) is not a crush output grade/i, (m) => `${m[1].replace(/^INVARIANT VIOLATION: /, '')} cannot come out of a crush — choose Fine Powder or Coarse.`],
+  [/(.+) is listed twice/i, (m) => `${m[1].replace(/^INVARIANT VIOLATION: /, '')} is listed twice — put all its kg on one line.`],
+
+  // missing or wrong figures
+  [/supplier name is required/i, 'Supplier name is required.'],
+  [/customer( name)? is required/i, 'Customer name is required.'],
   [/unknown customer/i, 'Customer not found. Pick the customer from the list.'],
-  [/mass|conservation/i, 'The weights do not add up: kg in must equal kg out plus wastage.'],
+  [/unknown (output )?product( code)?/i, 'That product is no longer offered. Pick one from the list.'],
+  [/unknown (input )?batch/i, 'That batch was not found. Pick one from the list.'],
+  [/(unit price|line total) must be positive/i, 'Each line needs a bill amount more than 0.'],
+  [/landed cost must be positive/i, 'The cost must be more than 0.'],
+  [/(payment|advance) amount must be positive/i, 'The amount must be more than 0.'],
+  [/quantity must be positive|quantities must be positive|kg in must be more than 0|needs kg more than 0/i, 'The kg must be more than 0.'],
+  [/(wastage|conversion cost|cash received) cannot be negative/i, (m) => `The ${m[1].toLowerCase()} cannot be below 0.`],
+  [/at least one (output grade|sale line|dispatch line) is required/i, (m) => `Add at least one ${m[1].replace(' line', '').replace('output ', '')} line.`],
+  [/null value in column/i, 'A required figure was missing, so nothing was saved.'],
+
+  // corrections and review
+  [/may only be dated on or before the original/i, 'A correction cannot be dated after the entry it corrects.'],
+  [/is itself a correction/i, 'That entry is already a correction — correct the original entry instead.'],
+  [/review item .* is not open/i, 'That review item was already resolved.'],
+  [/resolution note is required/i, 'Write a short note saying what was fixed.'],
+
+  // sign-in
   [/JWT|token.*expired|PGRST30[0-9]/i, 'Your sign-in has expired. Sign out and sign in again.'],
   [/Not authorised|permission denied|42501/i, 'This login is not allowed to do this. Sign out and sign in again.'],
 ]
+
+/** The plain sentence for a database refusal, or null when no rule knows it. */
+export function serverReason(raw: string): string | null {
+  for (const [re, text] of RULES) {
+    const m = raw.match(re)
+    if (m) return typeof text === 'string' ? text : text(m)
+  }
+  return null
+}
 
 export function friendlyMessage(error: unknown, kind: ErrorKind): string {
   if (typeof error === 'string') return error // our own message
@@ -30,7 +99,8 @@ export function friendlyMessage(error: unknown, kind: ErrorKind): string {
   if (e.fromServer) {
     // the delete / restore functions answer in plain words written for this app: show them as they are
     if (/^Cannot (delete|restore):/.test(raw)) return raw.replace(/^Cannot (delete|restore): /, '')
-    for (const [re, text] of RULES) if (re.test(raw)) return text
+    const reason = serverReason(raw)
+    if (reason) return kind === 'save' ? `Not saved: ${reason}` : reason
     return kind === 'save'
       ? 'The books refused this entry, so nothing was saved. Check the numbers and try again.'
       : 'Could not load this screen. Try again.'

@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/react'
 import { supabase } from './supabase'
 import { markUsingCache, recall, remember } from './offline'
 import type {
@@ -66,9 +67,23 @@ function rpcError(error: { message: string; code?: string | null }): InvariantEr
   return new InvariantError(error.message, answered, answered)
 }
 
-/** Write RPCs give up after SAVE_TIMEOUT_MS so the form can offer Retry with the same key. */
-function saveRpc(fn: string, args: Record<string, unknown>) {
-  return supabase.rpc(fn, args).abortSignal(AbortSignal.timeout(SAVE_TIMEOUT_MS))
+/**
+ * Write RPCs give up after SAVE_TIMEOUT_MS so the form can offer Retry with the same key.
+ * Every save the database refuses is reported to Sentry with the RPC name and the reason. Numbers are masked (#):
+ * financial figures never leave the machine in error payloads.
+ */
+async function saveRpc(fn: string, args: Record<string, unknown>) {
+  const res = await supabase.rpc(fn, args).abortSignal(AbortSignal.timeout(SAVE_TIMEOUT_MS))
+  if (res.error && /^(PGRST\d+|[0-9A-Z]{5})$/.test(res.error.code ?? '')) {
+    const reason = res.error.message.replace(/\d[\d.,]*/g, '#')
+    Sentry.captureMessage(`Refused save: ${fn}`, {
+      level: 'warning',
+      tags: { rpc: fn, pg_code: res.error.code ?? '' },
+      extra: { reason },
+      fingerprint: ['refused-save', fn, reason],
+    })
+  }
+  return res
 }
 
 /** Crush-run arguments shared by the save and the preview. Only kg go to the database; it computes every value. */
@@ -418,7 +433,7 @@ export class LedgerEngine {
   /** Quick-add a customer through the guarded RPC. */
   async createCustomer(name: string, phone?: string): Promise<Customer> {
     if (!name.trim()) throw new InvariantError('Customer name is required.')
-    const { data, error } = await supabase.rpc('create_customer', {
+    const { data, error } = await saveRpc('create_customer', {
       p_name: name.trim(),
       p_phone: phone?.trim() || null,
       p_note: null,
@@ -551,7 +566,7 @@ export class LedgerEngine {
     if (!note.trim()) {
       throw new InvariantError('A resolution note is required — corrections must never be silent.')
     }
-    const { error } = await supabase.rpc('resolve_review_item', {
+    const { error } = await saveRpc('resolve_review_item', {
       p_id: id,
       p_note: note,
       p_dismissed: dismissed,
