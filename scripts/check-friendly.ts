@@ -33,6 +33,10 @@ assert.equal(say('INVARIANT VIOLATION: wastage cannot be negative'), 'Not saved:
 assert.equal(say('null value in column "value_paisa" of relation "movements" violates not-null constraint'), 'Not saved: A required figure was missing, so nothing was saved.')
 assert.equal(say('CONCURRENCY: another dispatch changed the same stock - nothing was saved, please retry'),
   'Not saved: Someone saved a change to the same stock at the same moment — nothing was saved. Tap Retry.')
+assert.equal(say('INVARIANT VIOLATION: batch BATCH-075 did not exist yet on 2026-09-10 (it arrived 2026-09-14)'),
+  'Not saved: Batch BATCH-075 had not arrived yet on 10 Sep 2026 — it arrived 14 Sep 2026. Change the date or the batch.')
+assert.equal(say('INVARIANT VIOLATION: date 2026-10-04 is in the future (today is 2026-10-03)'), 'Not saved: 4 Oct 2026 is in the future. Pick today or an earlier day.')
+assert.equal(say('INVARIANT VIOLATION: date 2026-08-22 is before the books start (23 Aug 2026)'), 'Not saved: The books start on 23 Aug 2026. Pick that day or later.')
 for (const m of [
   'INVARIANT VIOLATION: supplier name is required', 'INVARIANT VIOLATION: unknown product code X', 'INVARIANT VIOLATION: quantity must be positive (line 1)',
   'INVARIANT VIOLATION: a correction may only be dated on or before the original (2026-09-30 is after 2026-09-24)',

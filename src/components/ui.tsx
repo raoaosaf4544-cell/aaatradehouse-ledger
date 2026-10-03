@@ -138,13 +138,22 @@ export function dateInWords(iso: string): string {
 }
 
 /** The date box every entry form puts first: label, the date in words, and "change if not today". */
+/** The first day of the books; the database refuses entries before it (and after today). */
+export const BOOKS_START = '2026-08-23'
+
 export function DateField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  const today = todayPK()
+  const outside = !!value && (value < BOOKS_START || value > today)
   return (
     <label className="block">
       <span className="mb-1.5 block text-base font-semibold text-slate-700">{label}</span>
-      <input type="date" value={value} onChange={(e) => onChange(e.target.value)} className={inputCls} required />
-      <span className="mt-1.5 block text-sm text-slate-600">
-        <span className="font-semibold text-slate-900">{dateInWords(value)}</span> — change if not today
+      <input type="date" value={value} min={BOOKS_START} max={today} onChange={(e) => onChange(e.target.value)} className={inputCls} required />
+      <span className={`mt-1.5 block text-sm ${outside ? 'font-semibold text-rose-700' : 'text-slate-600'}`}>
+        {outside ? (
+          <>Pick a day from {dateInWords(BOOKS_START)} to today — {value > today ? 'that day is in the future' : 'the books start on 23 Aug 2026'}.</>
+        ) : (
+          <><span className="font-semibold text-slate-900">{dateInWords(value)}</span> — change if not today</>
+        )}
       </span>
     </label>
   )

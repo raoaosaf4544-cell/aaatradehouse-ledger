@@ -15,6 +15,10 @@ const PRODUCT_NAMES: Record<string, string> = {
 }
 const product = (code: string) => PRODUCT_NAMES[code] ?? code
 const kg = (s: string) => Number(s).toLocaleString('en-PK', { maximumFractionDigits: 3 })
+const day = (iso: string) => {
+  const [y, mo, d] = iso.split('-').map(Number)
+  return `${d} ${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][mo - 1]} ${y}`
+}
 const rs = (s: string) => `Rs ${Number(s).toLocaleString('en-PK', { maximumFractionDigits: 2 })}`
 
 type Rule = [RegExp, string | ((m: RegExpMatchArray) => string)]
@@ -40,7 +44,11 @@ const RULES: Rule[] = [
   [/not enough (compatible )?stock|insufficient stock|exceeds .*on hand/i, 'Not enough salt in stock for this.'],
   [/line \S+ requests ([\d.]+) kg but invoice (\S+) has only ([\d.]+) kg left/i,
     (m) => `Invoice ${m[2]} has only ${kg(m[3])} kg left to send, not ${kg(m[1])} kg.`],
+  [/batch (\S+) did not exist yet on (\d{4}-\d\d-\d\d) \(it arrived (\d{4}-\d\d-\d\d)\)/i,
+    (m) => `Batch ${m[1]} had not arrived yet on ${day(m[2])} — it arrived ${day(m[3])}. Change the date or the batch.`],
   [/did not exist yet|opened on/i, 'That batch had not arrived yet on that date.'],
+  [/date (\d{4}-\d\d-\d\d) is in the future/i, (m) => `${day(m[1])} is in the future. Pick today or an earlier day.`],
+  [/is before the books start/i, 'The books start on 23 Aug 2026. Pick that day or later.'],
   [/CONCURRENCY/, 'Someone saved a change to the same stock at the same moment — nothing was saved. Tap Retry.'],
 
   // crush runs
