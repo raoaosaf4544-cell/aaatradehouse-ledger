@@ -212,11 +212,16 @@ function Ledger({ userName }: { userName: string }) {
           {activeTab === 'deleted' && <DeletedEntries />}
           {activeTab === 'debtors' && <Debtors onPosted={onPosted} />}
           {activeTab === 'record' && <Record go={go} />}
-          {activeTab === 'record-capital' && <CapitalInjectionForm onPosted={onPosted} />}
-          {activeTab === 'record-purchase' && <SaltPurchaseForm onPosted={onPosted} />}
-          {activeTab === 'record-crush' && <CrushRunForm onPosted={onPosted} />}
-          {activeTab === 'record-moneyout' && <MoneyOutForm onPosted={onPosted} />}
-          {activeTab === 'record-sale' && <SellSaltForm onPosted={onPosted} />}
+          {activeTab.startsWith('record-') && (
+            // entry forms: a comfortable form width on big screens, full width on phones
+            <div className="mx-auto max-w-3xl">
+              {activeTab === 'record-capital' && <CapitalInjectionForm onPosted={onPosted} />}
+              {activeTab === 'record-purchase' && <SaltPurchaseForm onPosted={onPosted} />}
+              {activeTab === 'record-crush' && <CrushRunForm onPosted={onPosted} />}
+              {activeTab === 'record-moneyout' && <MoneyOutForm onPosted={onPosted} />}
+              {activeTab === 'record-sale' && <SellSaltForm onPosted={onPosted} />}
+            </div>
+          )}
           </div>
         </div>
       </main>
