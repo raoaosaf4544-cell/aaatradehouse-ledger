@@ -7,6 +7,7 @@
     "dev": "vite --port=3000 --host=127.0.0.1",
     "dev:phone": "vite --port=3000 --host=0.0.0.0",
     "build": "vite build",
+    "deploy:cf": "npm run build && npx wrangler pages deploy dist --project-name aaatradehouse-ledger --branch main",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
