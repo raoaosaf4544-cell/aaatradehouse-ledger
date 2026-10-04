@@ -1,1 +1,7 @@
 @import "tailwindcss";
+
+/* Keyboard users (laptop/PC) always see where they are. Only shows for keyboard focus, not for taps or clicks. */
+:focus-visible {
+  outline: 3px solid #2563eb;
+  outline-offset: 2px;
+}
