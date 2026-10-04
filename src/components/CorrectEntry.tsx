@@ -30,6 +30,14 @@ export function CorrectEntryDialog({ entryRef, onClose: close }: { entryRef: str
   const safe = useSafeSave()
   const heading = useRef<HTMLHeadingElement>(null)
   const onClose = () => close(saved !== null)
+  // Esc closes, except while a save is on its way (same rule as the Delete dialog)
+  const escRef = useRef(() => {})
+  escRef.current = () => !safe.locked && onClose()
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && escRef.current()
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [])
 
   useEffect(() => {
     heading.current?.focus()
@@ -82,7 +90,7 @@ export function CorrectEntryDialog({ entryRef, onClose: close }: { entryRef: str
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center" onClick={() => !safe.locked && onClose()}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 text-left sm:items-center" onClick={() => !safe.locked && onClose()}>
       <div
         role="dialog"
         aria-modal="true"

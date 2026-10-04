@@ -153,7 +153,7 @@ function DeleteEntryDialog({ entryRef, onClose: close }: { entryRef: string; onC
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 text-left sm:items-center"
       onClick={() => phase !== 'deleting' && onClose()}
     >
       <div
