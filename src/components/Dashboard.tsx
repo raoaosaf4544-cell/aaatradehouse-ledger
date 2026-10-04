@@ -10,7 +10,7 @@ import { EntryMenu } from './EntryActions'
 type Snapshot = {
   cash: AccountBalance | undefined
   vehicle: AccountBalance | undefined
-  suspense: AccountBalance | undefined
+  unclassifiedPaisa: number
   debtors: DebtorRow[]
   inventoryTotalPaisa: number
   stock: StockOnHand[]
@@ -39,7 +39,9 @@ export default function Dashboard({ go }: { go?: (tab: string) => void }) {
       const inventoryTotalPaisa = balances
         .filter((b) => ['1200', '1210', '1220', '1230'].includes(b.code))
         .reduce((s, b) => s + b.balance_paisa, 0)
-      setSnap({ cash: find('1000'), vehicle: find('1400'), suspense: find('1900'), inventoryTotalPaisa, stock, debtors, health })
+      // both are 'still to sort out': 1900 Suspense + 5950 Personal/Unclassified (review)
+      const unclassifiedPaisa = (find('1900')?.balance_paisa ?? 0) + (find('5950')?.balance_paisa ?? 0)
+      setSnap({ cash: find('1000'), vehicle: find('1400'), unclassifiedPaisa, inventoryTotalPaisa, stock, debtors, health })
     } catch (e) {
       setError(e)
     } finally {
@@ -145,11 +147,11 @@ export default function Dashboard({ go }: { go?: (tab: string) => void }) {
           <Money paisa={snap.vehicle?.balance_paisa ?? 0} />
         </StatCard>
         <StatCard
-          label="Unclassified (Suspense)"
+          label="Unclassified (to check with baba)"
           sub="awaiting your review — never salt cost"
-          tone={snap.suspense && snap.suspense.balance_paisa > 0 ? 'amber' : 'slate'}
+          tone={snap.unclassifiedPaisa > 0 ? 'amber' : 'slate'}
         >
-          <Money paisa={snap.suspense?.balance_paisa ?? 0} />
+          <Money paisa={snap.unclassifiedPaisa} />
         </StatCard>
       </div>
 
