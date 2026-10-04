@@ -167,7 +167,7 @@ function Ledger({ userName }: { userName: string }) {
               <button
                 onClick={() => setIsSidebarOpen(true)}
                 aria-label="Open menu"
-                className="-ml-2 flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 md:hidden"
+                className="-ml-2 flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 lg:hidden"
               >
                 <Menu className="h-6 w-6" />
               </button>
@@ -201,6 +201,8 @@ function Ledger({ userName }: { userName: string }) {
         )}
 
         <div className="flex-1 overflow-auto p-4 md:p-8">
+          {/* on big screens the content stays a readable width instead of stretching edge to edge */}
+          <div className="mx-auto w-full max-w-6xl">
           {activeTab === 'dashboard' && <Dashboard key={dataVersion} go={go} />}
           {activeTab === 'cashbook' && <CashBook />}
           {activeTab === 'cash' && <CashLedger />}
@@ -215,6 +217,7 @@ function Ledger({ userName }: { userName: string }) {
           {activeTab === 'record-crush' && <CrushRunForm onPosted={onPosted} />}
           {activeTab === 'record-moneyout' && <MoneyOutForm onPosted={onPosted} />}
           {activeTab === 'record-sale' && <SellSaltForm onPosted={onPosted} />}
+          </div>
         </div>
       </main>
     </div>

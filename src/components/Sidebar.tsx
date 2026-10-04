@@ -34,13 +34,13 @@ export default function Sidebar({
     <>
       {isOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/50 transition-opacity md:hidden"
+          className="fixed inset-0 z-40 bg-black/50 transition-opacity lg:hidden"
           onClick={() => setIsOpen(false)}
         />
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex h-full w-64 shrink-0 transform flex-col border-r border-slate-800 bg-slate-900 text-slate-300 transition-transform duration-300 md:relative md:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 flex h-full w-72 shrink-0 transform flex-col border-r border-slate-800 bg-slate-900 text-slate-300 transition-transform duration-300 lg:relative lg:translate-x-0 ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
@@ -51,7 +51,7 @@ export default function Sidebar({
           </div>
           <button
             aria-label="Close menu"
-            className="-mr-2 flex min-h-11 min-w-11 items-center justify-center rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white md:hidden"
+            className="-mr-2 flex min-h-11 min-w-11 items-center justify-center rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white lg:hidden"
             onClick={() => setIsOpen(false)}
           >
             <X className="h-6 w-6" />
