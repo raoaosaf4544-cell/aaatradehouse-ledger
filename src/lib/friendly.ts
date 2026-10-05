@@ -88,6 +88,7 @@ const RULES: Rule[] = [
   [/at least 4 letters/i, REASON_RULE],
   [/may only be dated on or before the original/i, 'A correction cannot be dated after the entry it corrects.'],
   [/is itself a correction/i, 'That entry is already a correction — correct the original entry instead.'],
+  [/(\S+) was replaced by (\S+)/i, (m) => `${m[1]} was already changed — the newest version is ${m[2]}. Open ${m[2]} instead.`],
   [/review item .* is not open/i, 'That review item was already resolved.'],
   [/resolution note is required/i, 'Write a short note saying what was fixed.'],
 

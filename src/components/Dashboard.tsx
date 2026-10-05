@@ -152,8 +152,9 @@ export default function Dashboard({ go }: { go?: (tab: string) => void }) {
         </StatCard>
         <StatCard
           label="Unclassified (to check with baba)"
-          sub="awaiting your review — never salt cost"
+          sub="Tap to open the lines and move them →"
           tone={snap.unclassifiedPaisa > 0 ? 'amber' : 'slate'}
+          onClick={go && (() => go('unclassified'))}
         >
           <Money paisa={snap.unclassifiedPaisa} />
         </StatCard>

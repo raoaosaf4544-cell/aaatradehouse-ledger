@@ -73,8 +73,22 @@ export type DeletePreview = {
 }
 
 /** A money entry as the correction form opens it (public.correct_entry_preview without lines). */
+/** One entry still in 5950 Personal/Unclassified (public.v_unclassified). */
+export type UnclassifiedRow = {
+  original_ref: string
+  original_date: string | null
+  /** the paper register wording of the original entry */
+  original_description: string | null
+  /** the latest version of the entry: the one to correct */
+  latest_ref: string
+  entry_date: string
+  amount_paisa: number
+}
+
+/** The entry as it is now: the original + all its corrections added up (the latest version is the one to correct). */
 export type CorrectionStart = {
   ref: string
+  original_ref: string
   date: string
   type: string
   description: string

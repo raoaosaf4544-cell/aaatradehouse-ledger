@@ -21,6 +21,7 @@ import CrushRunForm from './components/CrushRunForm'
 import MoneyOutForm from './components/MoneyOutForm'
 import SellSaltForm from './components/SellSaltForm'
 import Debtors from './components/Debtors'
+import Unclassified from './components/Unclassified'
 
 type AppUser = { id: string; name: string; role: string }
 
@@ -86,11 +87,12 @@ function App() {
       </div>
     )
   }
-  return <Ledger userName={user.name} />
+  // JARVIS ('assistant') and an auditor only read; every other linked login records (the database checks it too)
+  return <Ledger userName={user.name} canRecord={!['assistant', 'auditor'].includes(user.role)} />
 }
 
 const TABS = new Set([
-  'dashboard', 'cashbook', 'cash', 'salt', 'financials', 'review', 'debtors', 'deleted', 'record',
+  'dashboard', 'cashbook', 'cash', 'salt', 'financials', 'review', 'debtors', 'deleted', 'record', 'unclassified',
   'record-capital', 'record-purchase', 'record-crush', 'record-moneyout', 'record-sale',
 ])
 const tabFromHash = () => {
@@ -101,7 +103,7 @@ const tabFromHash = () => {
 const isInstalledApp = () =>
   window.matchMedia?.('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true
 
-function Ledger({ userName }: { userName: string }) {
+function Ledger({ userName, canRecord }: { userName: string; canRecord: boolean }) {
   const offline = useOffline()
   const [activeTab, setActiveTab] = useState(tabFromHash)
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
@@ -210,6 +212,7 @@ function Ledger({ userName }: { userName: string }) {
           {activeTab === 'financials' && <Financials />}
           {activeTab === 'review' && <ReviewQueue />}
           {activeTab === 'deleted' && <DeletedEntries />}
+          {activeTab === 'unclassified' && <Unclassified key={dataVersion} canRecord={canRecord} />}
           {activeTab === 'debtors' && <Debtors onPosted={onPosted} />}
           {activeTab === 'record' && <Record go={go} />}
           {activeTab.startsWith('record-') && (

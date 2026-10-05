@@ -4,8 +4,8 @@
 --   2. Wrong amount: one correction for the difference.
 --   3. Later date: a reversal on the original date + the correct entry on the later date, saved together.
 --   4. A future date is refused and NOTHING is saved (no half correction).
---   5. Same key again: no new entries. Nothing changed: refused. Correcting again on top: refused.
---   6. Not offered: a sale, a correction itself, an entry already corrected.
+--   5. Same key again: no new entries. Nothing changed: refused. Correcting the replaced original again: refused.
+--   6. Not offered: a sale, an entry already replaced by a newer version. Offered: the latest version (EV-000400).
 --   7. The books still balance.
 do $t$
 declare
@@ -86,11 +86,12 @@ begin
     end;
   end loop;
 
-  -- 6. not offered
+  -- 6. not offered: a sale, and an entry already replaced by a newer version (since 5 Oct the LATEST version of a
+  --    chain - here the correction EV-000400 - is offered; see correct_chain_test.sql)
   if public.correct_entry_preview((select event_ref from public.v_events_with_party where event_type = 'sale' order by id limit 1)) ->> 'blocker' is null
-     or public.correct_entry_preview('EV-000400') ->> 'blocker' not like '%is itself a correction%'
-     or public.correct_entry_preview('EV-000237') ->> 'blocker' not like '%already corrected by EV-000400%' then
-    problems := problems || 'a sale, a correction or a corrected entry was offered'::text;
+     or public.correct_entry_preview('EV-000400') ->> 'blocker' is not null
+     or public.correct_entry_preview('EV-000237') ->> 'blocker' not like '%EV-000237 was replaced by EV-000400%' then
+    problems := problems || 'a sale or a replaced entry was offered, or the latest version EV-000400 was not'::text;
   end if;
   reset role;
 

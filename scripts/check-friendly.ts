@@ -71,6 +71,10 @@ for (const ok of ['baba confirmed', 'test', 'بابا نے کہا']) assert.equa
 assert.equal(say('INVARIANT VIOLATION: Write a short reason, at least 4 letters (not only numbers).'), `Not saved: ${REASON_RULE}`)
 assert.equal(friendlyMessage(server('Cannot delete: Write a short reason, at least 4 letters (not only numbers).'), 'save'), REASON_RULE)
 
+// a correction chain: an older version is refused with the newest one named
+assert.equal(say('INVARIANT VIOLATION: EV-000531 was replaced by EV-000550 - correct EV-000550 instead.'),
+  'Not saved: EV-000531 was already changed — the newest version is EV-000550. Open EV-000550 instead.')
+
 // a plain JS crash: general sentence, not the crash text
 assert.equal(friendlyMessage(new TypeError("Cannot read properties of undefined (reading 'x')"), 'load'), 'Something went wrong loading this screen. Try again.')
 console.log('friendly message check: OK')

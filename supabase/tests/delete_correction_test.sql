@@ -1,7 +1,8 @@
 -- Delete-safety test. Run as postgres. Always ends with an exception, so nothing is kept. Look for "DELETE TEST PASS".
 --   1. The camera correction pair EV-000405/406 (restored first if still deleted): the preview of deleting EV-000405
 --      says it corrects EV-000404, that EV-000406 would stay, needs UNDO, and lists each account's change.
---   2. Deleting it without UNDO is refused by the database; with UNDO it goes through.
+--   2. Since 5 Oct: deleting EV-000405 is refused (EV-000406 is the newer version: undo a chain newest first).
+--      EV-000406 without UNDO is refused by the database; with UNDO it goes through.
 --   3. An ordinary entry: accounts listed, no correction warning, no UNDO.
 --   4. The original EV-000404 still cannot be deleted while corrections point to it.
 do $t$
@@ -22,12 +23,20 @@ begin
      or p->'corrections'->0->>'others_staying' is distinct from 'EV-000406' or jsonb_array_length(p->'accounts') < 2 then
     problems := problems || format('preview of EV-000405: %s', p - 'entries');
   end if;
+  -- since 5 Oct (delete latest in chain): EV-000405 is older than EV-000406, so it is refused even with UNDO
+  if not (p->>'blockers' like '%EV-000405 was replaced by EV-000406%') then problems := problems || format('EV-000405 not blocked: %s', p->'blockers'); end if;
   begin
-    perform public.delete_entry('EV-000405', 'test');
+    perform public.delete_entry('EV-000405', 'test', 'undo');
+    problems := problems || 'older correction EV-000405 deleted while EV-000406 stays'::text;
+  exception when check_violation then null;
+  end;
+  -- newest first: EV-000406 needs UNDO, then goes through
+  begin
+    perform public.delete_entry('EV-000406', 'test');
     problems := problems || 'correction deleted without UNDO'::text;
   exception when check_violation then msg := sqlerrm;
   end;
-  r := public.delete_entry('EV-000405', 'test', 'undo');
+  r := public.delete_entry('EV-000406', 'test', 'undo');
   if r->>'deleted_id' is null then problems := problems || format('delete with UNDO failed: %s', r); end if;
 
   select e.event_ref into v_plain from public.v_events_with_party e

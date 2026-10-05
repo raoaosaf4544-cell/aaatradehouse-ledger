@@ -35,11 +35,14 @@ export function StatCard({
   sub,
   children,
   tone = 'slate',
+  onClick,
 }: {
   label: string
   sub?: string
   children: React.ReactNode
   tone?: 'slate' | 'emerald' | 'amber' | 'rose' | 'blue'
+  /** makes the whole card a button (e.g. open the screen behind the figure) */
+  onClick?: () => void
 }) {
   const tones: Record<string, string> = {
     slate: 'text-slate-900',
@@ -48,12 +51,19 @@ export function StatCard({
     rose: 'text-rose-700',
     blue: 'text-blue-700',
   }
-  return (
+  const body = (
     <Card>
       <div className="text-xs uppercase tracking-wide text-slate-500 font-semibold">{label}</div>
       <div className={`mt-2 text-2xl font-bold ${tones[tone]}`}>{children}</div>
       {sub && <div className="mt-1 text-sm text-slate-500">{sub}</div>}
     </Card>
+  )
+  return onClick ? (
+    <button type="button" onClick={onClick} className="block w-full rounded-2xl text-left transition hover:brightness-95">
+      {body}
+    </button>
+  ) : (
+    body
   )
 }
 

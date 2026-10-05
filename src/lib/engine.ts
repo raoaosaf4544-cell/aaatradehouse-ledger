@@ -30,6 +30,7 @@ import type {
   CrushPreview,
   CorrectionStart,
   CorrectionPlan,
+  UnclassifiedRow,
 } from './types'
 
 /**
@@ -596,6 +597,13 @@ export class LedgerEngine {
     const { data, error } = await saveRpc('delete_entry', { p_ref: ref, p_reason: reason.trim(), p_confirm: confirm?.trim() || null })
     if (error) throw rpcError(error)
     return data as { event_refs: string[]; deleted_id: number; already_deleted?: boolean }
+  }
+
+  /** What is still in 5950 Personal/Unclassified, one row per entry (public.v_unclassified), oldest first. */
+  async unclassified(): Promise<UnclassifiedRow[]> {
+    const { data, error } = await supabase.from('v_unclassified').select('*').order('entry_date').order('latest_ref')
+    if (error) throw rpcError(error)
+    return data as UnclassifiedRow[]
   }
 
   /** The entry as the correction form opens it, or why it cannot be corrected here. */
