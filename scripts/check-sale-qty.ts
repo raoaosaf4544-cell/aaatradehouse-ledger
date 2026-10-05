@@ -1,19 +1,22 @@
 // Self-check for src/lib/qty.ts (sale quantities). Run: bun scripts/check-sale-qty.ts
 import assert from 'node:assert/strict'
-import { fifoCostPaisa, lineKg, qtyWords } from '../src/lib/qty'
+import { UNITS, fifoCostPaisa, lineKg, qtyWords } from '../src/lib/qty'
 
-assert.equal(lineKg('kg', 240, 0), 240)
-assert.equal(lineKg('bag', 6, 50), 300)
-assert.equal(lineKg('bag', 6, 0), 0) // bag size not picked yet: incomplete
-assert.equal(lineKg('man', 5, 0), 200) // 1 man = 40 kg
-assert.equal(lineKg('man', 2.5, 0), 100)
-assert.equal(lineKg('kg', 0, 0), 0)
-assert.equal(lineKg('kg', Number.NaN, 0), 0)
+assert.equal(UNITS[0].id, 'bag50') // "Bag 50 kg" is first (the default)
+assert.deepEqual(UNITS.map((u) => u.label), ['Bag 50 kg', 'Man 40 kg', 'Bag 25 kg', 'Bag 20 kg', 'Loose kg'])
+assert.equal(lineKg('kg', 240), 240)
+assert.equal(lineKg('bag50', 6), 300)
+assert.equal(lineKg('bag25', 4), 100)
+assert.equal(lineKg('bag20', 5), 100)
+assert.equal(lineKg('man', 5), 200) // 1 man = 40 kg, never redefined
+assert.equal(lineKg('man', 2.5), 100)
+assert.equal(lineKg('kg', 0), 0)
+assert.equal(lineKg('kg', Number.NaN), 0)
 
-assert.equal(qtyWords('bag', 6, 50), '6 × 50 kg bags')
-assert.equal(qtyWords('bag', 1, 20), '1 × 20 kg bag')
-assert.equal(qtyWords('man', 3, 0), '3 man')
-assert.equal(qtyWords('kg', 240, 0), '240 kg')
+assert.equal(qtyWords('bag50', 6), '6 × 50 kg bags')
+assert.equal(qtyWords('bag20', 1), '1 × 20 kg bag')
+assert.equal(qtyWords('man', 3), '3 man')
+assert.equal(qtyWords('kg', 240), '240 kg')
 
 // a bill total the per-kg entry could not hit exactly: 3,140 for 240 kg (13.0833.../kg) stays 3,140.00
 const billPaisa = Math.round(3140 * 100)

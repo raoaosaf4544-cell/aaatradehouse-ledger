@@ -1,21 +1,28 @@
-/** Sale quantities the way they are counted at the plant: kg, bags of a size, or man (40 kg). */
-export type QtyUnit = 'kg' | 'bag' | 'man'
+/**
+ * Sale quantities the way they are counted at the plant. Input helpers only: the books keep grams + price per kg.
+ * Man is 40 kg and stays 40 kg (old entries and baba's register use it).
+ */
 export const MAN_KG = 40
-export const BAG_SIZES = [20, 25, 40, 50]
+export const UNITS = [
+  { id: 'bag50', label: 'Bag 50 kg', kg: 50, one: 'bag' },
+  { id: 'man', label: `Man ${MAN_KG} kg`, kg: MAN_KG, one: 'man' },
+  { id: 'bag25', label: 'Bag 25 kg', kg: 25, one: 'bag' },
+  { id: 'bag20', label: 'Bag 20 kg', kg: 20, one: 'bag' },
+  { id: 'kg', label: 'Loose kg', kg: 1, one: 'kg' },
+] as const
+export type QtyUnit = (typeof UNITS)[number]['id']
+export const unitOf = (id: QtyUnit) => UNITS.find((u) => u.id === id)!
 
 /** kg for one line (0 when not complete). */
-export function lineKg(unit: QtyUnit, count: number, bagKg: number): number {
-  if (!(count > 0)) return 0
-  if (unit === 'kg') return count
-  if (unit === 'man') return count * MAN_KG
-  return bagKg > 0 ? count * bagKg : 0
+export function lineKg(unit: QtyUnit, count: number): number {
+  return count > 0 ? count * unitOf(unit).kg : 0
 }
 
 /** "6 × 50 kg bags", "3 man", "240 kg" — written into the note so the books match the paper. */
-export function qtyWords(unit: QtyUnit, count: number, bagKg: number): string {
-  if (unit === 'bag') return `${count} × ${bagKg} kg bag${count === 1 ? '' : 's'}`
-  if (unit === 'man') return `${count} man`
-  return `${count} kg`
+export function qtyWords(unit: QtyUnit, count: number): string {
+  const u = unitOf(unit)
+  if (u.one === 'bag') return `${count} × ${u.kg} kg bag${count === 1 ? '' : 's'}`
+  return `${count} ${u.one}`
 }
 
 export type PoolBatch = { id: number; opened_on: string; onhand_grams: number; value_paisa: number }
