@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
 import { engine } from '../lib/engine'
 import type { BatchRow, CrushPreview, Product } from '../lib/types'
 import { batchNames, leftAndCost, withStockOldestFirst } from '../lib/batches'
+import { bagsLooseGrams, crushWastage } from '../lib/qty'
 import { SaveControls, useSafeSave } from './SafeSave'
 import {
-  Badge,
   Card,
   DateField,
   ErrorBanner,
@@ -18,23 +17,54 @@ import {
 } from './ui'
 
 /**
- * Crush Run: rock salt in → graded salt out + weighed wastage.
- * The father enters only weights and the conversion cost. The database prices every grade (cost pool by weight,
- * wastage its weight share); the preview is the database's own answer, so it can never differ from the save.
+ * Crush Run: rock salt in → Fine and/or Daana out, counted in 50 kg bags + loose kg.
+ * Wastage is what is left over: rock used − (fine + daana). The database prices every output (cost pool by weight,
+ * wastage its weight share) and makes each output its own batch; the preview is the database's own answer, so it can
+ * never differ from the save.
  */
 
-type GradeRow = { key: number; productCode: string; qtyKg: string }
+const FINE = 'SALT_BULK'
+const DAANA = 'SALT_ROCK_COARSE'
+const kgText = (g: number) => (g / 1000).toLocaleString('en-PK', { maximumFractionDigits: 3 })
 
-let rowKey = 1
+function BagsLoose({ label, bags, loose, onBags, onLoose, hint }: {
+  label: string
+  bags: string
+  loose: string
+  onBags: (v: string) => void
+  onLoose: (v: string) => void
+  hint?: string
+}) {
+  return (
+    <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+      <legend className="px-1 text-base font-semibold text-slate-700">{label}</legend>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Bags of 50 kg">
+          <input type="number" min="0" step="1" inputMode="numeric" value={bags} onChange={(e) => onBags(e.target.value)} placeholder="0" className={inputCls} />
+        </Field>
+        <Field label="+ loose kg">
+          <input type="number" min="0" step="0.001" inputMode="decimal" value={loose} onChange={(e) => onLoose(e.target.value)} placeholder="0" className={inputCls} />
+        </Field>
+      </div>
+      <p className="mt-2 text-base text-slate-700">
+        = <strong>{kgText(bagsLooseGrams(bags, loose))} kg</strong>
+        {hint && <span className="text-slate-500"> · {hint}</span>}
+      </p>
+    </fieldset>
+  )
+}
 
 export default function CrushRunForm({ onPosted }: { onPosted: () => void }) {
   const [date, setDate] = useState(todayPK)
   const [batches, setBatches] = useState<BatchRow[] | null>(null)
   const [products, setProducts] = useState<Product[] | null>(null)
   const [inputBatch, setInputBatch] = useState('')
-  const [inputKg, setInputKg] = useState('')
-  const [grades, setGrades] = useState<GradeRow[]>([{ key: 0, productCode: '', qtyKg: '' }])
-  const [wastageKg, setWastageKg] = useState('')
+  const [rockBags, setRockBags] = useState('')
+  const [rockLoose, setRockLoose] = useState('')
+  const [fineBags, setFineBags] = useState('')
+  const [fineLoose, setFineLoose] = useState('')
+  const [daanaBags, setDaanaBags] = useState('')
+  const [daanaLoose, setDaanaLoose] = useState('')
   const [conversionPkr, setConversionPkr] = useState('')
   const [payCash, setPayCash] = useState(true)
   const [supplier, setSupplier] = useState('')
@@ -50,50 +80,50 @@ export default function CrushRunForm({ onPosted }: { onPosted: () => void }) {
       .then(([b, p]) => {
         setBatches(b)
         setProducts(p)
-        const gradeable = p.filter((x) => x.form === 'bulk_processed')
-        setGrades((g) => (g[0].productCode ? g : [{ ...g[0], productCode: gradeable[0]?.code ?? '' }]))
       })
       .catch(setLoadError)
     engine.supplierNames().then(setSuppliers).catch(() => setSuppliers([]))
   }, [])
 
-  // crush grades come out; only rock salt goes in
-  const gradeProducts = useMemo(() => products?.filter((p) => p.form === 'bulk_processed') ?? [], [products])
+  // only rock salt goes in; Fine and Daana come out
   const availableBatches = useMemo(() => {
     const rock = new Set(products?.filter((p) => p.form === 'raw').map((p) => p.code))
     return withStockOldestFirst(batches?.filter((b) => rock.has(b.product_code)) ?? [])
   }, [batches, products])
   const names = useMemo(() => batchNames(batches ?? []), [batches])
   const selectedBatch = batches?.find((b) => b.batch_code === inputBatch)
+  const outputsKnown = !!products && [FINE, DAANA].every((c) => products.some((p) => p.code === c))
 
-  const inputG = Math.round((Number(inputKg) || 0) * 1000)
-  const wastageG = Math.round((Number(wastageKg) || 0) * 1000)
+  const inputG = bagsLooseGrams(rockBags, rockLoose)
+  const fineG = bagsLooseGrams(fineBags, fineLoose)
+  const daanaG = bagsLooseGrams(daanaBags, daanaLoose)
+  const outG = fineG + daanaG
+  const waste = crushWastage(inputG, outG)
+  const outputs = [
+    { product_code: FINE, qty_kg: fineG / 1000 },
+    { product_code: DAANA, qty_kg: daanaG / 1000 },
+  ].filter((o) => o.qty_kg > 0)
   const conversionP = Math.round((Number(conversionPkr) || 0) * 100)
-  const gradeRows = grades.map((g) => ({ ...g, qtyG: Math.round((Number(g.qtyKg) || 0) * 1000) }))
-  const outG = gradeRows.reduce((s, g) => s + g.qtyG, 0)
 
-  const massOk = inputG > 0 && outG + wastageG === inputG
   const qtyWithinStock = !!selectedBatch && inputG <= selectedBatch.onhand_grams
-
-  const gradesOk =
-    gradeRows.every((g) => g.qtyG > 0 && !!g.productCode) && new Set(gradeRows.map((g) => g.productCode)).size === gradeRows.length
+  const massOk = inputG > 0 && outG > 0 && !waste.over
   const supplierOk = payCash || conversionP === 0 || supplier.trim().length > 0
-  const valid = !!inputBatch && massOk && qtyWithinStock && gradesOk && supplierOk
+  const valid = !!inputBatch && outputsKnown && massOk && qtyWithinStock && supplierOk
 
   // The preview is the database's own calculation (the same function the save uses), asked again 0.4 s after typing stops.
-  const previewKey = JSON.stringify([inputBatch, inputG, wastageG, conversionP, payCash, gradeRows.map((g) => [g.productCode, g.qtyG])])
+  const previewKey = JSON.stringify([inputBatch, inputG, fineG, daanaG, conversionP, payCash])
   useEffect(() => {
     setPreview(null)
     setPreviewError(null)
-    if (!inputBatch || !massOk || !qtyWithinStock || !gradesOk) return
+    if (!inputBatch || !outputsKnown || !massOk || !qtyWithinStock) return
     let alive = true
     const t = setTimeout(() => {
       engine
         .crushRunPreview({
           inputBatchCode: inputBatch,
           inputQtyKg: inputG / 1000,
-          outputs: gradeRows.map((g) => ({ product_code: g.productCode, qty_kg: g.qtyG / 1000 })),
-          wastageKg: wastageG / 1000,
+          outputs,
+          wastageKg: waste.g / 1000,
           conversionCostPkr: conversionP / 100,
           payCash,
         })
@@ -107,12 +137,7 @@ export default function CrushRunForm({ onPosted }: { onPosted: () => void }) {
   }, [previewKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function clear() {
-    setInputKg('')
-    setWastageKg('')
-    setConversionPkr('')
-    setGrades([{ key: (rowKey += 1), productCode: gradeProducts[0]?.code ?? '', qtyKg: '' }])
-    setNote('')
-    setSupplier('')
+    for (const set of [setRockBags, setRockLoose, setFineBags, setFineLoose, setDaanaBags, setDaanaLoose, setConversionPkr, setNote, setSupplier]) set('')
   }
 
   async function submit(e: React.FormEvent) {
@@ -121,10 +146,10 @@ export default function CrushRunForm({ onPosted }: { onPosted: () => void }) {
     const res = await safe.save((key) =>
       engine.recordProcessRun({
         inputBatchCode: inputBatch,
-        inputQtyKg: Number(inputKg),
-        outputs: gradeRows.map((g) => ({ product_code: g.productCode, qty_kg: Number(g.qtyKg) || 0 })),
-        wastageKg: Number(wastageKg) || 0,
-        conversionCostPkr: Number(conversionPkr) || 0,
+        inputQtyKg: inputG / 1000,
+        outputs,
+        wastageKg: waste.g / 1000,
+        conversionCostPkr: conversionP / 100,
         payCash,
         supplier: payCash ? undefined : supplier.trim() || undefined,
         occurredOn: date,
@@ -137,15 +162,18 @@ export default function CrushRunForm({ onPosted }: { onPosted: () => void }) {
     onPosted()
   }
 
+  const pct = waste.pct.toLocaleString('en-PK', { maximumFractionDigits: 1 })
+
   return (
     <Card>
-      <SectionTitle>Crush salt — raw in, graded out</SectionTitle>
+      <SectionTitle>Crush salt — rock in, Fine and Daana out</SectionTitle>
       <form onSubmit={submit} className="space-y-5">
         {loadError != null && <ErrorBanner error={loadError} />}
+        {products && !outputsKnown && <ErrorBanner error="Fine or Daana is missing from the product list — tell Rao before crushing." />}
         <fieldset disabled={safe.locked} className="space-y-5">
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
           <DateField label="Date" value={date} onChange={setDate} />
-          <Field label="Crush which batch?">
+          <Field label="Crush which rock batch?">
             <select value={inputBatch} onChange={(e) => setInputBatch(e.target.value)} className={inputCls} required>
               <option value="" disabled>Choose a batch with stock…</option>
               {availableBatches.map((b) => (
@@ -157,105 +185,46 @@ export default function CrushRunForm({ onPosted }: { onPosted: () => void }) {
           </Field>
         </div>
 
+        <BagsLoose
+          label="Rock used"
+          bags={rockBags}
+          loose={rockLoose}
+          onBags={setRockBags}
+          onLoose={setRockLoose}
+          hint={selectedBatch ? `${kgText(selectedBatch.onhand_grams)} kg in this batch` : undefined}
+        />
+        {selectedBatch && !qtyWithinStock && (
+          <p role="alert" className="text-base font-semibold text-rose-700">
+            Only {kgText(selectedBatch.onhand_grams)} kg in that batch — reduce the rock used.
+          </p>
+        )}
+
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-          <Field label="How many kg go in?" hint={selectedBatch ? `Available: ${(selectedBatch.onhand_grams / 1000).toLocaleString()} kg` : undefined}>
-            <input
-              type="number"
-              min="1"
-              step="1"
-              inputMode="numeric"
-              value={inputKg}
-              onChange={(e) => setInputKg(e.target.value)}
-              placeholder="e.g. 10000"
-              className={inputCls}
-              required
-            />
-          </Field>
-          <Field label="Weighed wastage (kg)" hint="Stone, dust, moisture loss — as measured on the scale.">
-            <input
-              type="number"
-              min="0"
-              step="1"
-              inputMode="numeric"
-              value={wastageKg}
-              onChange={(e) => setWastageKg(e.target.value)}
-              placeholder="e.g. 200"
-              className={inputCls}
-            />
-          </Field>
+          <BagsLoose label="Fine out" bags={fineBags} loose={fineLoose} onBags={setFineBags} onLoose={setFineLoose} />
+          <BagsLoose label="Daana (coarse) out" bags={daanaBags} loose={daanaLoose} onBags={setDaanaBags} onLoose={setDaanaLoose} />
         </div>
 
-        {/* grade output rows */}
-        <div>
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-base font-semibold text-slate-700">Output grades (kg out)</span>
-            <button
-              type="button"
-              onClick={() => setGrades((g) => [...g, { key: (rowKey += 1), productCode: gradeProducts[0]?.code ?? '', qtyKg: '' }])}
-              className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-            >
-              <Plus className="h-4 w-4" /> Add grade
-            </button>
-          </div>
-          <div className="space-y-3">
-            {gradeRows.map((g, i) => (
-              <div key={g.key} className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_auto]">
-                <select
-                  value={g.productCode}
-                  onChange={(e) =>
-                    setGrades((rows) => rows.map((r) => (r.key === g.key ? { ...r, productCode: e.target.value } : r)))
-                  }
-                  className={inputCls}
-                >
-                  <option value="" disabled>Grade…</option>
-                  {gradeProducts.map((p) => (
-                    <option key={p.code} value={p.code}>{p.name}</option>
-                  ))}
-                </select>
-                <input
-                  type="number"
-                  min="1"
-                  step="1"
-                  inputMode="numeric"
-                  value={g.qtyKg}
-                  onChange={(e) =>
-                    setGrades((rows) => rows.map((r) => (r.key === g.key ? { ...r, qtyKg: e.target.value } : r)))
-                  }
-                  placeholder="kg out"
-                  className={inputCls}
-                />
-                <button
-                  type="button"
-                  onClick={() => setGrades((rows) => (rows.length > 1 ? rows.filter((r) => r.key !== g.key) : rows))}
-                  className="flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-slate-300 px-3 text-slate-600 hover:bg-rose-50 hover:text-rose-600"
-                  aria-label="Remove grade row"
-                >
-                  <Trash2 className="h-5 w-5" />
-                </button>
-              </div>
-            ))}
-          </div>
-          {outG > 0 && (
-            <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
-              <Badge tone={massOk ? 'emerald' : 'rose'}>
-                {massOk ? 'Mass checks out ✓' : `Mismatch: ${((outG + wastageG) / 1000).toLocaleString()} kg out vs ${(inputG / 1000).toLocaleString()} kg in`}
-              </Badge>
-              {preview && (
-                <span className="text-slate-600">
-                  Cost pool PKR {(preview.pool_paisa / 100).toLocaleString()} — wastage share PKR {(preview.wastage_value_paisa / 100).toLocaleString()}, graded share PKR {(preview.graded_share_paisa / 100).toLocaleString()}
-                </span>
+        {inputG > 0 && outG > 0 && (
+          waste.over ? (
+            <p role="alert" className="rounded-xl border-2 border-rose-300 bg-rose-50 p-3 text-base font-semibold text-rose-900">
+              Fine + Daana ({kgText(outG)} kg) is more than the rock used ({kgText(inputG)} kg). Check the counts — this cannot be saved.
+            </p>
+          ) : (
+            <div className="rounded-xl bg-slate-100 p-3 text-base text-slate-800">
+              Output <strong>{kgText(outG)} kg</strong> · wastage <strong>{kgText(waste.g)} kg ({pct}%)</strong>
+              {(waste.g === 0 || waste.pct > 10) && (
+                <p role="alert" className="mt-2 rounded-lg bg-amber-50 px-3 py-2 font-semibold text-amber-900">
+                  {waste.g === 0
+                    ? '⚠ No wastage at all — did you weigh/count everything? You can still save.'
+                    : `⚠ Wastage is over 10% (${pct}%) — did you weigh/count everything? You can still save.`}
+                </p>
               )}
             </div>
-          )}
-          {selectedBatch && !qtyWithinStock && (
-            <div className="mt-2 text-sm font-semibold text-rose-600">
-              Only {(selectedBatch.onhand_grams / 1000).toLocaleString()} kg in that batch — reduce the input quantity.
-            </div>
-          )}
-        </div>
+          )
+        )}
 
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-          <Field label="Conversion cost (PKR)" hint="Crushing labour, electricity, machine diesel for this run.">
+          <Field label="Crushing cost (Rs)" hint="Crushing labour, electricity, machine diesel for this run.">
             <input
               type="number"
               min="0"
@@ -267,10 +236,10 @@ export default function CrushRunForm({ onPosted }: { onPosted: () => void }) {
               className={inputCls}
             />
           </Field>
-          <Field label="How is the conversion cost paid?">
+          <Field label="How is the crushing cost paid?">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {[
-                { cash: true, title: 'Cash now' },
+                { cash: true, title: 'Paid now (cash)' },
                 { cash: false, title: 'On credit' },
               ].map((opt) => (
                 <button
@@ -315,8 +284,9 @@ export default function CrushRunForm({ onPosted }: { onPosted: () => void }) {
         {preview && (
           <>
             <div className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              <strong>Priced by the database:</strong> the grades share the cost by weight and wastage takes its weight
-              share. These are the exact figures that will be saved.
+              <strong>Priced by the database:</strong> Fine and Daana share the cost by weight and wastage takes its weight
+              share (cost pool Rs {(preview.pool_paisa / 100).toLocaleString()}, wastage Rs {(preview.wastage_value_paisa / 100).toLocaleString()}).
+              Each output becomes its own batch, crushed in-house from this rock batch.
             </div>
             <JournalPreview
               lines={preview.lines.map((l) => ({
@@ -337,4 +307,3 @@ export default function CrushRunForm({ onPosted }: { onPosted: () => void }) {
     </Card>
   )
 }
-

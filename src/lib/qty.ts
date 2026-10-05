@@ -25,6 +25,18 @@ export function qtyWords(unit: QtyUnit, count: number): string {
   return `${count} ${u.one}`
 }
 
+/** grams in "N bags of 50 kg + loose kg" (blank or bad input counts as 0; negatives are not counted) */
+export function bagsLooseGrams(bags: string, looseKg: string): number {
+  const n = (s: string) => (Number(s) > 0 ? Number(s) : 0)
+  return Math.round(n(bags) * 50 * 1000 + n(looseKg) * 1000)
+}
+
+/** Crush: wastage = rock in − (fine + daana); share of rock in, as a %. */
+export function crushWastage(inG: number, outG: number) {
+  const g = inG - outG
+  return { g, pct: inG > 0 ? (g / inG) * 100 : 0, over: g < 0 }
+}
+
 export type PoolBatch = { id: number; opened_on: string; onhand_grams: number; value_paisa: number }
 
 /**
