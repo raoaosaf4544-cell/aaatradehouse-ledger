@@ -12,6 +12,8 @@ type Snapshot = {
   cash: AccountBalance | undefined
   vehicle: AccountBalance | undefined
   unclassifiedPaisa: number
+  /** 2000 Suppliers, as what we owe (credit side positive) */
+  weOwePaisa: number
   debtors: DebtorRow[]
   inventoryTotalPaisa: number
   stock: StockOnHand[]
@@ -45,7 +47,9 @@ export default function Dashboard({ go }: { go?: (tab: string) => void }) {
         .reduce((s, b) => s + b.balance_paisa, 0)
       // both are 'still to sort out': 1900 Suspense + 5950 Personal/Unclassified (review)
       const unclassifiedPaisa = (find('1900')?.balance_paisa ?? 0) + (find('5950')?.balance_paisa ?? 0)
-      setSnap({ cash: find('1000'), vehicle: find('1400'), unclassifiedPaisa, inventoryTotalPaisa, stock, debtors, health })
+      // balances are debit minus credit; what we owe suppliers is on the credit side
+      const weOwePaisa = -(find('2000')?.balance_paisa ?? 0)
+      setSnap({ cash: find('1000'), vehicle: find('1400'), unclassifiedPaisa, weOwePaisa, inventoryTotalPaisa, stock, debtors, health })
     } catch (e) {
       setError(e)
     } finally {
@@ -157,6 +161,14 @@ export default function Dashboard({ go }: { go?: (tab: string) => void }) {
           onClick={go && (() => go('unclassified'))}
         >
           <Money paisa={snap.unclassifiedPaisa} />
+        </StatCard>
+        <StatCard
+          label="We owe / ہم نے دینا ہے"
+          sub="Workers, diesel, bills — tap to see who and pay →"
+          tone={snap.weOwePaisa > 0 ? 'amber' : 'slate'}
+          onClick={go && (() => go('record-paysupplier'))}
+        >
+          <Money paisa={snap.weOwePaisa} />
         </StatCard>
       </div>
 

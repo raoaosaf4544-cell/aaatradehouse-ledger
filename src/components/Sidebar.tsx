@@ -29,6 +29,7 @@ export default function Sidebar({
     { id: 'record-crush', name: 'Crush Salt', icon: Hammer },
     { id: 'record-sale', name: 'Sell Salt / Dispatch', icon: PackageOpen },
     { id: 'record-moneyout', name: 'Record Money Out', icon: BookUser },
+    { id: 'record-paysupplier', name: 'Pay supplier / ادائیگی', icon: HandCoins },
   ]
 
   return (

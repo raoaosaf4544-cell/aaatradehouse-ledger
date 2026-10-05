@@ -1,4 +1,4 @@
-import { BookUser, Hammer, Landmark, ShoppingCart, PackageOpen, ArrowRight } from 'lucide-react'
+import { BookUser, Hammer, HandCoins, Landmark, ShoppingCart, PackageOpen, ArrowRight } from 'lucide-react'
 
 export default function Record({ go }: { go: (tab: string) => void }) {
   const actions = [
@@ -20,7 +20,7 @@ export default function Record({ go }: { go: (tab: string) => void }) {
       id: 'record-crush',
       title: 'Crush Salt',
       grades: true,
-      desc: 'Raw salt in, graded salt out. Enter weights and wastage — the engine prices every grade itself.',
+      desc: 'Rock in, Fine and Daana out in bags. Each crushing cost paid now or later — shows the cost per kg before saving.',
       icon: Hammer,
       tone: 'from-amber-500 to-orange-500',
     },
@@ -37,6 +37,13 @@ export default function Record({ go }: { go: (tab: string) => void }) {
       desc: 'Labour, fuel, bills, meals — with a live preview of the exact journal lines before saving.',
       icon: BookUser,
       tone: 'from-slate-600 to-slate-700',
+    },
+    {
+      id: 'record-paysupplier',
+      title: 'Pay supplier / ادائیگی',
+      desc: 'Pay someone we owe — a worker, the diesel pump, the electricity bill. Part payments are fine.',
+      icon: HandCoins,
+      tone: 'from-emerald-600 to-teal-700',
     },
   ] as const
 

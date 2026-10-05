@@ -22,6 +22,7 @@ import MoneyOutForm from './components/MoneyOutForm'
 import SellSaltForm from './components/SellSaltForm'
 import Debtors from './components/Debtors'
 import Unclassified from './components/Unclassified'
+import PaySupplier from './components/PaySupplier'
 
 type AppUser = { id: string; name: string; role: string }
 
@@ -93,7 +94,7 @@ function App() {
 
 const TABS = new Set([
   'dashboard', 'cashbook', 'cash', 'salt', 'financials', 'review', 'debtors', 'deleted', 'record', 'unclassified',
-  'record-capital', 'record-purchase', 'record-crush', 'record-moneyout', 'record-sale',
+  'record-capital', 'record-purchase', 'record-crush', 'record-moneyout', 'record-sale', 'record-paysupplier',
 ])
 const tabFromHash = () => {
   const t = window.location.hash.slice(1)
@@ -223,6 +224,7 @@ function Ledger({ userName, canRecord }: { userName: string; canRecord: boolean 
               {activeTab === 'record-crush' && <CrushRunForm onPosted={onPosted} />}
               {activeTab === 'record-moneyout' && <MoneyOutForm onPosted={onPosted} />}
               {activeTab === 'record-sale' && <SellSaltForm onPosted={onPosted} />}
+              {activeTab === 'record-paysupplier' && <PaySupplier key={dataVersion} onPosted={onPosted} />}
             </div>
           )}
           </div>
