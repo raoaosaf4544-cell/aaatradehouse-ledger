@@ -1,6 +1,6 @@
 // Self-check for src/lib/friendly.ts: raw database text is never shown. Run: bun scripts/check-friendly.ts
 import assert from 'node:assert/strict'
-import { friendlyMessage } from '../src/lib/friendly'
+import { REASON_RULE, friendlyMessage, reasonProblem } from '../src/lib/friendly'
 
 const server = (message: string) => ({ message, definite: true, fromServer: true })
 
@@ -64,6 +64,12 @@ assert.equal(friendlyMessage(server('Cannot restore: an entry with the same numb
 // our own plain checks pass through; our own strings pass through
 assert.equal(friendlyMessage({ message: 'Supplier name is required.', definite: true, fromServer: false }, 'save'), 'Supplier name is required.')
 assert.equal(friendlyMessage('Cash plus advance is more than the bill total — reduce the cash received.', 'save'), 'Cash plus advance is more than the bill total — reduce the cash received.')
+
+// reason rule (same as app.reason_problem): at least 4 letters, not only numbers/symbols
+for (const bad of ['', 'x', '1234', 'ab 12 !!']) assert.equal(reasonProblem(bad), REASON_RULE, bad)
+for (const ok of ['baba confirmed', 'test', 'بابا نے کہا']) assert.equal(reasonProblem(ok), null, ok)
+assert.equal(say('INVARIANT VIOLATION: Write a short reason, at least 4 letters (not only numbers).'), `Not saved: ${REASON_RULE}`)
+assert.equal(friendlyMessage(server('Cannot delete: Write a short reason, at least 4 letters (not only numbers).'), 'save'), REASON_RULE)
 
 // a plain JS crash: general sentence, not the crash text
 assert.equal(friendlyMessage(new TypeError("Cannot read properties of undefined (reading 'x')"), 'load'), 'Something went wrong loading this screen. Try again.')

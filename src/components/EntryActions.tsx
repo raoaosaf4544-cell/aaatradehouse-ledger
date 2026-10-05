@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { MoreHorizontal, PencilLine, Trash2 } from 'lucide-react'
 import { engine } from '../lib/engine'
-import { friendlyMessage } from '../lib/friendly'
+import { REASON_RULE, friendlyMessage, reasonProblem } from '../lib/friendly'
 import { useOffline } from '../lib/offline'
 import type { DeletePreview } from '../lib/types'
 import { CorrectEntryDialog } from './CorrectEntry'
@@ -127,7 +127,7 @@ function DeleteEntryDialog({ entryRef, onClose: close }: { entryRef: string; onC
   }, [entryRef])
 
   async function confirmDelete() {
-    if (phase === 'deleting' || !reason.trim() || !wordOk) return
+    if (phase === 'deleting' || reasonProblem(reason) || !wordOk) return
     setPhase('deleting')
     setError(null)
     try {
@@ -306,6 +306,9 @@ function DeleteEntryDialog({ entryRef, onClose: close }: { entryRef: string; onC
                     placeholder="e.g. entered twice by mistake"
                     className={inputCls}
                   />
+                  <span className={`mt-1 block text-sm ${reason.trim() !== '' && reasonProblem(reason) ? 'font-semibold text-rose-700' : 'text-slate-500'}`}>
+                    {REASON_RULE}
+                  </span>
                 </label>
 
                 {needsWord && (
@@ -336,7 +339,7 @@ function DeleteEntryDialog({ entryRef, onClose: close }: { entryRef: string; onC
                   <button
                     type="button"
                     onClick={confirmDelete}
-                    disabled={!reason.trim() || !wordOk || phase === 'deleting'}
+                    disabled={!!reasonProblem(reason) || !wordOk || phase === 'deleting'}
                     className="min-h-11 rounded-xl bg-rose-700 px-4 text-lg font-bold text-white hover:bg-rose-800 disabled:bg-slate-300"
                   >
                     {phase === 'deleting' ? 'Deleting…' : 'Delete entry'}

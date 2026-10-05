@@ -21,6 +21,10 @@ const day = (iso: string) => {
 }
 const rs = (s: string) => `Rs ${Number(s).toLocaleString('en-PK', { maximumFractionDigits: 2 })}`
 
+/** Delete / correct / edit need a real reason; the database checks the same rule (app.reason_problem). */
+export const REASON_RULE = 'Write a short reason, at least 4 letters (not only numbers).'
+export const reasonProblem = (reason: string) => ((reason.match(/\p{L}/gu)?.length ?? 0) < 4 ? REASON_RULE : null)
+
 type Rule = [RegExp, string | ((m: RegExpMatchArray) => string)]
 
 const RULES: Rule[] = [
@@ -81,6 +85,7 @@ const RULES: Rule[] = [
   [/Only money entries can be corrected here/i, 'Only money entries can be corrected here. For sales, purchases, crush runs and payments: delete it and enter it again.'],
   [/cannot be used in a money-entry correction/i, 'That account cannot be used here (customer, supplier, advance or stock accounts).'],
   [/write why this entry is being corrected/i, 'Write why this entry is being corrected.'],
+  [/at least 4 letters/i, REASON_RULE],
   [/may only be dated on or before the original/i, 'A correction cannot be dated after the entry it corrects.'],
   [/is itself a correction/i, 'That entry is already a correction — correct the original entry instead.'],
   [/review item .* is not open/i, 'That review item was already resolved.'],

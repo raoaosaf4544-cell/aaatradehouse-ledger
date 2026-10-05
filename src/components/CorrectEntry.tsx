@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { engine } from '../lib/engine'
-import { friendlyMessage } from '../lib/friendly'
+import { REASON_RULE, friendlyMessage, reasonProblem } from '../lib/friendly'
 import type { AccountBalance, CorrectionPlan, CorrectionStart } from '../lib/types'
 import { SaveControls, useSafeSave } from './SafeSave'
 import { DateField, Field, Money, Spinner, accountName, dateInWords, inputCls } from './ui'
@@ -84,7 +84,7 @@ export function CorrectEntryDialog({ entryRef, onClose: close }: { entryRef: str
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
-    if (!ready || !plan || !reason.trim()) return
+    if (!ready || !plan || reasonProblem(reason)) return
     const r = await safe.save((k) => engine.correctEntry({ idempotencyKey: k, ref: entryRef, date, lines, reason }))
     if (r) setSaved(r.event_refs ?? [])
   }
@@ -149,9 +149,10 @@ export function CorrectEntryDialog({ entryRef, onClose: close }: { entryRef: str
               <Field label="Correct amount (PKR)">
                 <input type="number" min="0" step="0.01" inputMode="decimal" value={amountPkr} onChange={(e) => setAmountPkr(e.target.value)} className={inputCls} required />
               </Field>
-              <Field label="Why is it being corrected? (required)">
+              <Field label="Why is it being corrected? (required)" hint={REASON_RULE}>
                 <input type="text" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. paper register says 24 Sep" className={inputCls} required />
               </Field>
+              {reason.trim() !== '' && reasonProblem(reason) && <p role="alert" className="font-semibold text-rose-700">{REASON_RULE}</p>}
             </fieldset>
 
             {debitAcc && debitAcc === creditAcc && <p role="alert" className="font-semibold text-rose-700">The two accounts must be different.</p>}
@@ -183,7 +184,7 @@ export function CorrectEntryDialog({ entryRef, onClose: close }: { entryRef: str
               </section>
             )}
 
-            <SaveControls safe={safe} valid={ready && !!plan && !!reason.trim()} label="Save the correction" onStartOver={onClose} />
+            <SaveControls safe={safe} valid={ready && !!plan && !reasonProblem(reason)} label="Save the correction" onStartOver={onClose} />
             {!safe.locked && (
               <button type="button" onClick={onClose} className="min-h-11 w-full rounded-xl border-2 border-slate-300 px-4 text-lg font-semibold text-slate-700">
                 Cancel
