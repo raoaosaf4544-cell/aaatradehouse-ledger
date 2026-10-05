@@ -236,14 +236,45 @@ export type GradeOutput = {
   qty_kg: number
 }
 
-/** The database's crush-run figures (public.crush_run_preview) — the same formula the save uses. */
+/** One crushing-cost line: the full amount goes into the salt cost; paid now = cash, the rest is owed to `owed_to`. */
+export type CrushCost = {
+  kind: 'labour' | 'electricity' | 'diesel' | 'bags' | 'other'
+  amount_paisa: number
+  paid_now_paisa: number
+  owed_to?: string
+  expected_on?: string
+}
+
+/** The database's crush figures (public.crush_preview) — the same calculation the save uses. */
 export type CrushPreview = {
   input_value_paisa: number
+  /** rock value used + crushing cost: all of it goes to the good salt */
   pool_paisa: number
-  wastage_value_paisa: number
-  graded_share_paisa: number
+  output_grams: number
   outputs: { product_code: string; product_name: string; qty_grams: number; value_paisa: number }[]
-  lines: { account: string; debit: number; credit: number }[]
+  lines: { account: string; debit: number; credit: number; party?: string }[]
+  costs: { total_paisa: number; paid_now_paisa: number; later_paisa: number; owed: { name: string; amount_paisa: number; bill: boolean }[]; words: string }
+}
+
+/** What we owe one supplier (public.v_supplier_balances). extra_to_account set = a monthly bill (paying more is fine). */
+export type SupplierBalance = {
+  party_id: number
+  party_ref: string
+  name: string
+  extra_to_account: string | null
+  owed_paisa: number
+  last_owed_on: string | null
+  last_paid_on: string | null
+}
+
+export type PaySupplierResult = {
+  event_ref: string
+  supplier: string
+  paid_paisa: number
+  cleared_paisa: number
+  extra_paisa: number
+  extra_account: string | null
+  owed_after_paisa: number
 }
 
 export type PurchaseResult = {
@@ -255,9 +286,10 @@ export type ProcessRunResult = {
   event_ref: string
   input_batch: string
   input_value_paisa: number
+  cost_paisa: number
+  pool_paisa: number
+  output_grams: number
   wastage_grams: number
-  wastage_value_paisa: number
-  wastage_expense_paisa: number
   outputs: { batch_code: string; product_code: string; product_name: string; qty_grams: number; value_paisa: number }[]
 }
 

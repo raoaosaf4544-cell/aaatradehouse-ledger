@@ -5,22 +5,13 @@ import { REASON_RULE, friendlyMessage, reasonProblem } from '../lib/friendly'
 import type { CorrectionStart, UnclassifiedRow } from '../lib/types'
 import { DEFAULT_REASON, MOVE_TARGETS, moveLines } from '../lib/unclassified'
 import { SaveControls, useSafeSave } from './SafeSave'
-import { Card, ErrorBanner, Money, Spinner, dateInWords, inputCls } from './ui'
+import { Bi, Card, ErrorBanner, Money, Spinner, dateInWords, inputCls } from './ui'
 
 /**
  * Unclassified — check with baba. Every register line still in 5950, one card each. Baba moves a line in three taps:
  * "Move to…" → the account → Save. The save is the database's own "correct this entry" (the latest version of the
  * entry is corrected; the amount, date and cash stay as they are, only the account changes; history is kept).
  */
-
-/** English, then Urdu (right-to-left) */
-function Bi({ en, ur }: { en: string; ur: string }) {
-  return (
-    <>
-      {en} / <span lang="ur" dir="rtl">{ur}</span>
-    </>
-  )
-}
 
 export default function Unclassified({ canRecord }: { canRecord: boolean }) {
   const [rows, setRows] = useState<UnclassifiedRow[] | null>(null)

@@ -75,6 +75,16 @@ assert.equal(friendlyMessage(server('Cannot delete: Write a short reason, at lea
 assert.equal(say('INVARIANT VIOLATION: EV-000531 was replaced by EV-000550 - correct EV-000550 instead.'),
   'Not saved: EV-000531 was already changed — the newest version is EV-000550. Open EV-000550 instead.')
 
+// crushing costs and suppliers (messages exactly as the database words them)
+assert.equal(say('INVARIANT VIOLATION: Rs 3.0000000000000000 of labour is to pay later - say who it is owed to'),
+  'Not saved: Rs 3 of labour is to pay later — say who it is owed to.')
+assert.equal(say('INVARIANT VIOLATION: Rs 1.00 is more than we owe Test worker (Rs 0.00) - pay at most Rs 0.00'),
+  'Not saved: Rs 1 is more than we owe Test worker (Rs 0). Pay at most Rs 0.')
+assert.equal(say('INVARIANT VIOLATION: only a bill estimate (like electricity) can be cleared - pay Ali instead'),
+  'Not saved: Only a bill estimate (like electricity) can be cleared. For a person, pay what is owed.')
+assert.equal(friendlyMessage(server('Cannot delete: we would have paid Ali more than we owe. Nothing was changed.'), 'save'),
+  'we would have paid Ali more than we owe. Nothing was changed.')
+
 // a plain JS crash: general sentence, not the crash text
 assert.equal(friendlyMessage(new TypeError("Cannot read properties of undefined (reading 'x')"), 'load'), 'Something went wrong loading this screen. Try again.')
 console.log('friendly message check: OK')

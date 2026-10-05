@@ -3,6 +3,15 @@ import { paisaToPkr, gramsToKg } from '../lib/types'
 import { PAGE_SIZE } from '../lib/engine'
 import { friendlyMessage, type ErrorKind } from '../lib/friendly'
 
+/** English, then Urdu. The Urdu part is marked right-to-left, so the phone shows its letters in the right order. */
+export function Bi({ en, ur }: { en: string; ur: string }) {
+  return (
+    <>
+      {en} / <span lang="ur" dir="rtl">{ur}</span>
+    </>
+  )
+}
+
 export function Money({ paisa, className = '' }: { paisa: number; className?: string }) {
   const negative = paisa < 0
   return (

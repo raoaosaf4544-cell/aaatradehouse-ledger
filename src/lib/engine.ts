@@ -28,9 +28,12 @@ import type {
   DeletePreview,
   DeletedEntry,
   CrushPreview,
+  CrushCost,
   CorrectionStart,
   CorrectionPlan,
   UnclassifiedRow,
+  SupplierBalance,
+  PaySupplierResult,
 } from './types'
 
 /**
@@ -89,15 +92,14 @@ async function saveRpc(fn: string, args: Record<string, unknown>) {
   return res
 }
 
-/** Crush-run arguments shared by the save and the preview. Only kg go to the database; it computes every value. */
-function crushArgs(i: { inputBatchCode: string; inputQtyKg: number; outputs: GradeOutput[]; wastageKg: number; conversionCostPkr: number; payCash: boolean }) {
+/** Crush arguments shared by the save and the preview. Only kg and the cost lines go to the database; it computes every value. */
+function crushArgs(i: { inputBatchCode: string; inputQtyKg: number; outputs: GradeOutput[]; wastageKg: number; costs: CrushCost[] }) {
   return {
     p_input_batch_code: i.inputBatchCode,
     p_input_qty_grams: Math.round(i.inputQtyKg * 1000),
     p_outputs: i.outputs.map((o) => ({ product_code: o.product_code, qty_grams: Math.round(o.qty_kg * 1000) })),
     p_wastage_grams: Math.round(i.wastageKg * 1000),
-    p_conversion_cost_paisa: Math.round(i.conversionCostPkr * 100),
-    p_pay_cash: i.payCash,
+    p_costs: i.costs,
   }
 }
 
@@ -113,7 +115,7 @@ type AccountRow = { id: number; code: string; name: string }
 const OFFLINE_READS = [
   'listEvents', 'accountBalances', 'stockOnHand', 'batches', 'products', 'locations', 'openReviewItems',
   'eventLines', 'accountLines', 'accountTotals', 'customers', 'customerAdvanceBalance', 'sales', 'salesTotals',
-  'dispatchAllocations', 'debtors', 'ledgerHealth', 'cashDay', 'deletedEntries', 'supplierNames',
+  'dispatchAllocations', 'debtors', 'ledgerHealth', 'cashDay', 'deletedEntries', 'supplierNames', 'supplierBalances', 'unclassified',
 ] as const
 
 export class LedgerEngine {
@@ -364,60 +366,80 @@ export class LedgerEngine {
   }
 
   /**
-   * Record a crush run. The database prices everything (one formula, shared with crushRunPreview): cost pool =
-   * salt taken out + conversion cost; wastage gets its weight share; the grades share the rest by weight.
-   * On credit, the supplier (crushing contractor) is required and recorded on the entry.
+   * Record a crush run (public.record_crush). The database prices everything, one calculation shared with
+   * crushPreview: cost = rock value used + every crushing-cost line; the good salt carries all of it (loss absorbed),
+   * split by weight. Each cost line: paid now -> cash, the rest -> owed to its named supplier.
    */
-  async recordProcessRun(input: {
+  async recordCrush(input: {
     /** One key per entry attempt; reused on every retry of that same entry. */
     idempotencyKey: string
     inputBatchCode: string
     inputQtyKg: number
     outputs: GradeOutput[]
     wastageKg: number
-    conversionCostPkr: number
-    payCash: boolean
-    supplier?: string
+    costs: CrushCost[]
     occurredOn: string
     note?: string
   }): Promise<ProcessRunResult> {
     if (!(input.inputQtyKg > 0)) throw new InvariantError('Input quantity must be positive.')
     if (input.outputs.length === 0) throw new InvariantError('At least one output grade is required.')
     if (!(input.wastageKg >= 0)) throw new InvariantError('Wastage cannot be negative.')
-    if (!input.payCash && input.conversionCostPkr > 0 && !input.supplier?.trim()) {
-      throw new InvariantError('On credit: pick or type who is owed the crushing cost.')
-    }
-    const { data, error } = await saveRpc('record_process_run', {
+    const { data, error } = await saveRpc('record_crush', {
       ...crushArgs(input),
       p_occurred_on: input.occurredOn,
       p_note: input.note?.trim() || null,
-      p_created_by: this.createdBy(),
       p_idempotency_key: input.idempotencyKey,
-      p_supplier: input.supplier?.trim() || null,
     })
     if (error) throw rpcError(error)
     return data as ProcessRunResult
   }
 
   /** The database's figures for a crush run, without saving anything. */
-  async crushRunPreview(input: {
-    inputBatchCode: string
-    inputQtyKg: number
-    outputs: GradeOutput[]
-    wastageKg: number
-    conversionCostPkr: number
-    payCash: boolean
-  }): Promise<CrushPreview> {
-    const { data, error } = await supabase.rpc('crush_run_preview', crushArgs(input))
+  async crushPreview(input: { inputBatchCode: string; inputQtyKg: number; outputs: GradeOutput[]; wastageKg: number; costs: CrushCost[] }): Promise<CrushPreview> {
+    const { data, error } = await supabase.rpc('crush_preview', crushArgs(input))
     if (error) throw rpcError(error)
     return data as CrushPreview
   }
 
+  /** Every supplier with what we owe them now (public.v_supplier_balances), biggest first. */
+  async supplierBalances(): Promise<SupplierBalance[]> {
+    const { data, error } = await supabase.from('v_supplier_balances').select('*').order('owed_paisa', { ascending: false }).order('name')
+    if (error) throw rpcError(error)
+    return data as SupplierBalance[]
+  }
+
   /** Supplier names already used in the books (for "pick or type"). */
   async supplierNames(): Promise<string[]> {
-    const { data, error } = await supabase.from('v_events_with_party').select('party_name').eq('party_type', 'supplier').limit(1000)
+    return (await this.supplierBalances()).map((s) => s.name).sort((a, b) => a.localeCompare(b))
+  }
+
+  /**
+   * Pay a supplier (public.pay_supplier): Dr 2000 for that supplier / Cr cash. Never more than owed — except a
+   * monthly bill (electricity), where the extra goes to its expense account and the answer says how much.
+   */
+  async paySupplier(input: { idempotencyKey: string; partyId: number; amountPkr: number; occurredOn: string; note?: string }): Promise<PaySupplierResult> {
+    if (!(input.amountPkr > 0)) throw new InvariantError('Payment amount must be positive.')
+    const { data, error } = await saveRpc('pay_supplier', {
+      p_party_id: input.partyId,
+      p_amount_paisa: Math.round(input.amountPkr * 100),
+      p_occurred_on: input.occurredOn,
+      p_note: input.note?.trim() || null,
+      p_idempotency_key: input.idempotencyKey,
+    })
     if (error) throw rpcError(error)
-    return [...new Set((data ?? []).map((r: { party_name: string | null }) => r.party_name?.trim()).filter((n): n is string => !!n))].sort()
+    return data as PaySupplierResult
+  }
+
+  /** A bill estimate that was more than the real bill: remove what is left owed (public.clear_supplier_leftover). */
+  async clearSupplierLeftover(input: { idempotencyKey: string; partyId: number; occurredOn: string; reason: string }): Promise<{ event_ref: string; cleared_paisa: number }> {
+    const { data, error } = await saveRpc('clear_supplier_leftover', {
+      p_party_id: input.partyId,
+      p_occurred_on: input.occurredOn,
+      p_reason: input.reason.trim(),
+      p_idempotency_key: input.idempotencyKey,
+    })
+    if (error) throw rpcError(error)
+    return data as { event_ref: string; cleared_paisa: number }
   }
 
   /* ---------- Phase 3: Sales & Dispatch ---------- */
