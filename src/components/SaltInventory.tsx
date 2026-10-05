@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { engine } from '../lib/engine'
 import type { BatchRow } from '../lib/types'
+import { batchNames, withStockOldestFirst } from '../lib/batches'
 import { Badge, Card, EmptyState, ErrorBanner, Kg, Money, SectionTitle, Spinner, StatCard } from './ui'
 
 export default function SaltInventory() {
@@ -21,6 +22,7 @@ export default function SaltInventory() {
   const totalValue = batches.reduce((s, b) => s + b.value_paisa, 0)
   const totalWastageKg = batches.reduce((s, b) => s + b.wastage_grams, 0)
   const liveBatches = batches.filter((b) => b.onhand_grams > 0)
+  const names = batchNames(batches)
 
   return (
     <div className="space-y-6">
@@ -47,8 +49,8 @@ export default function SaltInventory() {
 
       <Card>
         <SectionTitle>Batches — computed from the append-only movement ledger</SectionTitle>
-        {batches.length === 0 ? (
-          <EmptyState>No batches yet. Record a purchase to create the first batch.</EmptyState>
+        {liveBatches.length === 0 ? (
+          <EmptyState>No salt in stock. Record a purchase to create a batch.</EmptyState>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -65,12 +67,15 @@ export default function SaltInventory() {
                 </tr>
               </thead>
               <tbody>
-                {batches.map((b) => (
+                {withStockOldestFirst(batches).map((b) => (
                   <tr
                     key={b.batch_code}
                     className={`border-b border-slate-100 ${b.onhand_grams === 0 ? 'text-slate-500' : ''}`}
                   >
-                    <td className="py-2 font-medium">{b.batch_code}</td>
+                    <td className="py-2 font-medium">
+                      {names.get(b.batch_code)}
+                      <div className="font-mono text-xs font-normal text-slate-500">{b.batch_code}</div>
+                    </td>
                     <td className="py-2">{b.product_name}</td>
                     <td className="py-2">{b.location_name}</td>
                     <td className="py-2 text-right">

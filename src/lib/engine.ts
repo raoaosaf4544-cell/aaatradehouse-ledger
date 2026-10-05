@@ -506,7 +506,8 @@ export class LedgerEngine {
     /** One key per entry attempt; reused on every retry of that same entry. */
     idempotencyKey: string
     customerName: string
-    items: { productCode: string; qtyKg: number; unitPricePkrPerKg?: number; lineTotalPkr?: number }[]
+    /** batchCode: take the whole line from this batch instead of oldest-first (record_dispatch "manual" allocation) */
+    items: { productCode: string; qtyKg: number; unitPricePkrPerKg?: number; lineTotalPkr?: number; batchCode?: string }[]
     cashReceivedPkr: number
     customerPhone?: string
     occurredOn: string
@@ -519,13 +520,16 @@ export class LedgerEngine {
       p_party: input.customerName.trim(),
       p_items: input.items.map((it) => {
         const qtyKg = Math.round(it.qtyKg * 1000) / 1000
+        const batch = it.batchCode
+          ? { allocations: [{ batch_code: it.batchCode, qty_kg: qtyKg }], override_reason: 'Batch picked on the Sell screen' }
+          : {}
         if (it.lineTotalPkr !== undefined && it.lineTotalPkr > 0) {
-          return { product_code: it.productCode, qty_kg: qtyKg, line_total_paisa: Math.round(it.lineTotalPkr * 100) }
+          return { product_code: it.productCode, qty_kg: qtyKg, line_total_paisa: Math.round(it.lineTotalPkr * 100), ...batch }
         }
         if (!(it.unitPricePkrPerKg && it.unitPricePkrPerKg > 0)) {
           throw new InvariantError('Each line needs a price per kg or a line total.')
         }
-        return { product_code: it.productCode, qty_kg: qtyKg, unit_price_paisa_per_kg: Math.round(it.unitPricePkrPerKg * 100) }
+        return { product_code: it.productCode, qty_kg: qtyKg, unit_price_paisa_per_kg: Math.round(it.unitPricePkrPerKg * 100), ...batch }
       }),
       p_cash_received_paisa: Math.round(input.cashReceivedPkr * 100),
       p_customer_phone: input.customerPhone?.trim() || null,

@@ -4,6 +4,7 @@ import { engine } from '../lib/engine'
 import type { AccountBalance, DebtorRow, LedgerEntryRow, LedgerHealth, StockOnHand } from '../lib/types'
 import { Card, ErrorBanner, Kg, Money, SectionTitle, ShowMore, Spinner, StatCard, usePaged } from './ui'
 import { EntryMenu } from './EntryActions'
+import { batchNames } from '../lib/batches'
 
 /** Dashboard: every number read from database views. No client-side totals over long lists. */
 
@@ -23,18 +24,21 @@ export default function Dashboard({ go }: { go?: (tab: string) => void }) {
   const [busy, setBusy] = useState(false)
   const [expanded, setExpanded] = useState<number | null>(null)
   const [lines, setLines] = useState<Record<number, LedgerEntryRow[]>>({})
+  const [batchName, setBatchName] = useState<Map<string, string>>(new Map())
   const events = usePaged((limit, offset) => engine.listEvents(limit, offset))
 
   async function load() {
     setBusy(true)
     setError(null)
     try {
-      const [balances, stock, debtors, health] = await Promise.all([
+      const [balances, stock, debtors, health, batches] = await Promise.all([
         engine.accountBalances(),
         engine.stockOnHand(),
         engine.debtors(),
         engine.ledgerHealth(),
+        engine.batches(),
       ])
+      setBatchName(batchNames(batches))
       const find = (code: string) => balances.find((b) => b.code === code)
       const inventoryTotalPaisa = balances
         .filter((b) => ['1200', '1210', '1220', '1230'].includes(b.code))
@@ -206,12 +210,16 @@ export default function Dashboard({ go }: { go?: (tab: string) => void }) {
                 <th className="pb-2">Location</th>
                 <th className="pb-2 text-right">Quantity</th>
                 <th className="pb-2 text-right">Value</th>
+                <th className="pb-2 text-right">Cost / kg</th>
               </tr>
             </thead>
             <tbody>
-              {snap.stock.map((s) => (
+              {snap.stock.filter((s) => s.qty_grams > 0).map((s) => (
                 <tr key={`${s.batch_code}-${s.location_code}`} className="border-b border-slate-100">
-                  <td className="py-2 font-medium">{s.batch_code}</td>
+                  <td className="py-2 font-medium">
+                    {batchName.get(s.batch_code) ?? s.batch_code}
+                    <div className="font-mono text-xs font-normal text-slate-500">{s.batch_code}</div>
+                  </td>
                   <td className="py-2">{s.product_name}</td>
                   <td className="py-2">{s.location_name}</td>
                   <td className="py-2 text-right">
@@ -219,6 +227,9 @@ export default function Dashboard({ go }: { go?: (tab: string) => void }) {
                   </td>
                   <td className="py-2 text-right">
                     <Money paisa={s.value_paisa} />
+                  </td>
+                  <td className="py-2 text-right font-mono tabular-nums text-slate-600">
+                    Rs {(s.value_paisa / 100 / (s.qty_grams / 1000)).toLocaleString('en-PK', { maximumFractionDigits: 2 })}
                   </td>
                 </tr>
               ))}

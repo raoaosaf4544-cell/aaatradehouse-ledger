@@ -3,6 +3,7 @@ import { Users, Calculator } from 'lucide-react'
 import { engine } from '../lib/engine'
 import type { BatchRow, Customer, Product } from '../lib/types'
 import { UNITS, fifoCostPaisa, lineKg, qtyWords, unitOf, type QtyUnit } from '../lib/qty'
+import { batchNames, leftAndCost, withStockOldestFirst } from '../lib/batches'
 import { SaveControls, useSafeSave } from './SafeSave'
 import {
   Card,
@@ -29,9 +30,11 @@ type LineDraft = {
   /** 'rate' = price per bag / man / kg (the chosen unit); 'total' = the bill total for the line */
   priceMode: 'rate' | 'total'
   price: string
+  /** '' = oldest batch first (FIFO, the default); otherwise the batch baba picked */
+  batchCode: string
 }
 
-const emptyLine = (): LineDraft => ({ productCode: '', unit: UNITS[0].id, count: '', priceMode: 'rate', price: '' })
+const emptyLine = (): LineDraft => ({ productCode: '', unit: UNITS[0].id, count: '', priceMode: 'rate', price: '', batchCode: '' })
 const rs = (n: number) => n.toLocaleString('en-PK', { maximumFractionDigits: 2 })
 
 /** record_udhaar_sale sends the salt out from this location (its default), so only stock here can be sold. */
@@ -43,6 +46,7 @@ export default function SellSaltForm({ onPosted }: { onPosted: () => void }) {
   const [customers, setCustomers] = useState<Customer[] | null>(null)
   const [products, setProducts] = useState<Product[] | null>(null)
   const [batches, setBatches] = useState<BatchRow[]>([])
+  const [names, setNames] = useState<Map<string, string>>(new Map())
   const [customerChoice, setCustomerChoice] = useState<'existing' | 'new'>('existing')
   const [existingCustomerId, setExistingCustomerId] = useState('')
   const [newName, setNewName] = useState('')
@@ -59,7 +63,8 @@ export default function SellSaltForm({ onPosted }: { onPosted: () => void }) {
       .then(([c, p, b]) => {
         setCustomers(c)
         setProducts(p.filter((x) => x.form !== 'packaging_material'))
-        setBatches(b.filter((x) => x.location_code === PLANT && x.status === 'open' && x.onhand_grams > 0))
+        setNames(batchNames(b))
+        setBatches(withStockOldestFirst(b.filter((x) => x.location_code === PLANT && x.status === 'open')))
       })
       .catch(setError)
   }, [])
@@ -104,22 +109,33 @@ export default function SellSaltForm({ onPosted }: { onPosted: () => void }) {
         const revenuePaisa = !qtyOk || !priceOk ? 0 : l.priceMode === 'total' ? Math.round(price * 100) : Math.round(count * price * 100)
         const billOk = revenuePaisa > 0
         const perKg = billOk ? revenuePaisa / 100 / qty : 0
-        return { ...l, countN: count, qty, qtyOk, billOk, product, revenuePaisa, perKg }
+        // the batches this product can come from, oldest first; picking the oldest is the same as the default
+        const choices = batches.filter((b) => b.product_code === l.productCode)
+        const picked = l.batchCode && l.batchCode !== choices[0]?.batch_code ? choices.find((b) => b.batch_code === l.batchCode) ?? null : null
+        return { ...l, countN: count, qty, qtyOk, billOk, product, revenuePaisa, perKg, choices, picked }
       }),
-    [lines, products],
+    [lines, products, batches],
   )
 
   // kg asked for per product across all lines, against what the plant holds
   const askedG = new Map<string, number>()
   for (const l of parsed) if (l.product) askedG.set(l.product.code, (askedG.get(l.product.code) ?? 0) + Math.round(l.qty * 1000))
   const shortOf = (code: string) => Math.max(0, (askedG.get(code) ?? 0) - (stockG.get(code) ?? 0))
-  const stockOk = [...askedG.keys()].every((code) => shortOf(code) === 0)
+  // a picked batch must hold the whole line (together with other lines picking the same batch)
+  const pickedShortG = parsed.map((l) =>
+    l.picked
+      ? Math.max(0, parsed.reduce((s, x) => s + (x.picked?.batch_code === l.picked!.batch_code ? Math.round(x.qty * 1000) : 0), 0) - l.picked.onhand_grams)
+      : 0,
+  )
+  const stockOk = [...askedG.keys()].every((code) => shortOf(code) === 0) && pickedShortG.every((g) => g === 0)
 
-  // what each line's salt cost (oldest batch first, after earlier lines of the same product) — warn below cost, never block
+  // what each line's salt cost (its picked batch, or oldest batch first after earlier lines of the same product) —
+  // warn below cost, never block
   const lineCost = parsed.map((l, i) => {
-    if (!l.product || !l.qtyOk || shortOf(l.product.code) > 0) return null
+    if (!l.product || !l.qtyOk || shortOf(l.product.code) > 0 || pickedShortG[i] > 0) return null
+    if (l.picked) return fifoCostPaisa([l.picked], 0, Math.round(l.qty * 1000))
     const code = l.product.code
-    const skipG = parsed.slice(0, i).reduce((s, x) => s + (x.product?.code === code ? Math.round(x.qty * 1000) : 0), 0)
+    const skipG = parsed.slice(0, i).reduce((s, x) => s + (x.product?.code === code && !x.picked ? Math.round(x.qty * 1000) : 0), 0)
     return fifoCostPaisa(batches.filter((b) => b.product_code === code), skipG, Math.round(l.qty * 1000))
   })
 
@@ -153,7 +169,7 @@ export default function SellSaltForm({ onPosted }: { onPosted: () => void }) {
       engine.recordUdhaarSale({
         customerName,
         // the typed bill total goes to the database as-is (no per-kg rounding loss)
-        items: parsed.map((l) => ({ productCode: l.product!.code, qtyKg: l.qty, lineTotalPkr: l.revenuePaisa / 100 })),
+        items: parsed.map((l) => ({ productCode: l.product!.code, qtyKg: l.qty, lineTotalPkr: l.revenuePaisa / 100, batchCode: l.picked?.batch_code })),
         cashReceivedPkr: cashPaisa / 100,
         customerPhone: customerChoice === 'new' ? newPhone : undefined,
         occurredOn: date,
@@ -241,7 +257,7 @@ export default function SellSaltForm({ onPosted }: { onPosted: () => void }) {
                     label={`Product${parsed.length > 1 ? ` (line ${i + 1})` : ''}`}
                     hint={products && sellable.length === 0 ? 'No salt in stock at the plant — record a purchase or crush run first.' : undefined}
                   >
-                    <select value={l.productCode} onChange={(e) => set({ productCode: e.target.value })} className={inputCls} required>
+                    <select value={l.productCode} onChange={(e) => set({ productCode: e.target.value, batchCode: '' })} className={inputCls} required>
                       <option value="">— choose —</option>
                       {sellable.map((p) => (
                         <option key={p.code} value={p.code}>
@@ -250,6 +266,41 @@ export default function SellSaltForm({ onPosted }: { onPosted: () => void }) {
                       ))}
                     </select>
                   </Field>
+                  {l.choices.length > 0 && (
+                    <div>
+                      <span className="mb-1.5 block text-base font-semibold text-slate-700">From which batch?</span>
+                      <div className="grid grid-cols-1 gap-2">
+                        {l.choices.map((b, k) => {
+                          const on = (l.picked?.batch_code ?? l.choices[0].batch_code) === b.batch_code
+                          return (
+                            <button
+                              key={b.batch_code}
+                              type="button"
+                              aria-pressed={on}
+                              onClick={() => set({ batchCode: k === 0 ? '' : b.batch_code })}
+                              className={`min-h-11 rounded-xl border-2 px-3 py-2 text-left transition ${
+                                on ? 'border-blue-500 bg-blue-50 text-blue-900' : 'border-slate-200 bg-white text-slate-700'
+                              }`}
+                            >
+                              <span className="block text-base font-semibold">
+                                {names.get(b.batch_code) ?? b.batch_code}
+                                {k === 0 && <span className="font-normal"> · oldest, used first</span>}
+                              </span>
+                              <span className="block text-sm">{leftAndCost(b)}</span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                      {!l.picked && l.choices.length > 1 && (
+                        <p className="mt-1 text-sm text-slate-500">If the oldest batch runs out, the rest comes from the next oldest.</p>
+                      )}
+                      {pickedShortG[i] > 0 && (
+                        <p role="alert" className="mt-1 text-base font-semibold text-rose-700">
+                          This batch has only {kgText(l.picked!.onhand_grams)} kg — reduce the quantity or pick another batch.
+                        </p>
+                      )}
+                    </div>
+                  )}
                   <div>
                     <span className="mb-1.5 block text-base font-semibold text-slate-700">Quantity counted in</span>
                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">

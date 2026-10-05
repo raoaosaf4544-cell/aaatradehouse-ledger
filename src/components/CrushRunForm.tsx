@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { engine } from '../lib/engine'
 import type { BatchRow, CrushPreview, Product } from '../lib/types'
+import { batchNames, leftAndCost, withStockOldestFirst } from '../lib/batches'
 import { SaveControls, useSafeSave } from './SafeSave'
 import {
   Badge,
@@ -60,8 +61,9 @@ export default function CrushRunForm({ onPosted }: { onPosted: () => void }) {
   const gradeProducts = useMemo(() => products?.filter((p) => p.form === 'bulk_processed') ?? [], [products])
   const availableBatches = useMemo(() => {
     const rock = new Set(products?.filter((p) => p.form === 'raw').map((p) => p.code))
-    return batches?.filter((b) => b.onhand_grams > 0 && rock.has(b.product_code)) ?? []
+    return withStockOldestFirst(batches?.filter((b) => rock.has(b.product_code)) ?? [])
   }, [batches, products])
+  const names = useMemo(() => batchNames(batches ?? []), [batches])
   const selectedBatch = batches?.find((b) => b.batch_code === inputBatch)
 
   const inputG = Math.round((Number(inputKg) || 0) * 1000)
@@ -148,7 +150,7 @@ export default function CrushRunForm({ onPosted }: { onPosted: () => void }) {
               <option value="" disabled>Choose a batch with stock…</option>
               {availableBatches.map((b) => (
                 <option key={b.batch_code} value={b.batch_code}>
-                  {b.batch_code} — {b.product_name}, {(b.onhand_grams / 1000).toLocaleString()} kg, {b.location_name}
+                  {names.get(b.batch_code) ?? b.batch_code} — {leftAndCost(b)}
                 </option>
               ))}
             </select>
