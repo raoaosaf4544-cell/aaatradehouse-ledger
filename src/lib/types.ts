@@ -236,24 +236,17 @@ export type GradeOutput = {
   qty_kg: number
 }
 
-/** One crushing-cost line: the full amount goes into the salt cost; paid now = cash, the rest is owed to `owed_to`. */
-export type CrushCost = {
-  kind: 'labour' | 'electricity' | 'diesel' | 'bags' | 'other'
-  amount_paisa: number
-  paid_now_paisa: number
-  owed_to?: string
-  expected_on?: string
-}
-
 /** The database's crush figures (public.crush_preview) — the same calculation the save uses. */
 export type CrushPreview = {
   input_value_paisa: number
-  /** rock value used + crushing cost: all of it goes to the good salt */
+  /** rock value used + plant cost: all of it goes to the good salt */
   pool_paisa: number
   output_grams: number
   outputs: { product_code: string; product_name: string; qty_grams: number; value_paisa: number }[]
   lines: { account: string; debit: number; credit: number; party?: string }[]
-  costs: { total_paisa: number; paid_now_paisa: number; later_paisa: number; owed: { name: string; amount_paisa: number; bill: boolean }[]; words: string }
+  rate_paisa_per_kg: number
+  /** rate x rock kg, credited to 5490 Plant cost charged to salt */
+  plant_cost_paisa: number
 }
 
 /** What we owe one supplier (public.v_supplier_balances). extra_to_account set = a monthly bill (paying more is fine). */

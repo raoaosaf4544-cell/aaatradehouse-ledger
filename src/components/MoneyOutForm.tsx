@@ -34,8 +34,6 @@ export default function MoneyOutForm({ onPosted }: { onPosted: () => void }) {
     return Number.isFinite(n) && n > 0 ? Math.round(n * 100) : 0
   })()
   const valid = !!category && amountPaisa > 0 && description.trim().length > 0
-  // hint only: crushing costs belong on the Crush screen, where they go into the salt cost
-  const looksLikeCrushing = (categoryId === 'labour' || categoryId === 'utilities') && /crush|پسائی|مشین|machine/i.test(description)
 
   const lines = category
     ? [
@@ -116,12 +114,6 @@ export default function MoneyOutForm({ onPosted }: { onPosted: () => void }) {
             required
           />
         </Field>
-
-        {looksLikeCrushing && (
-          <p role="note" className="rounded-xl bg-amber-50 px-4 py-3 text-base text-amber-900">
-            If this is for crushing, enter it on the <strong>Crush</strong> screen instead so it goes into the salt cost.
-          </p>
-        )}
 
         <JournalPreview
           lines={lines.map((l) => ({

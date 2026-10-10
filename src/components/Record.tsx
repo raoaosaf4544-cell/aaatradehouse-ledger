@@ -20,7 +20,7 @@ export default function Record({ go }: { go: (tab: string) => void }) {
       id: 'record-crush',
       title: 'Crush Salt',
       grades: true,
-      desc: 'Rock in, Fine and Daana out in bags. Each crushing cost paid now or later — shows the cost per kg before saving.',
+      desc: 'Rock in, Fine and Daana out in bags. Plant cost at a rate per kg of rock — shows the cost per kg before saving.',
       icon: Hammer,
       tone: 'from-amber-500 to-orange-500',
     },

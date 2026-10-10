@@ -28,7 +28,6 @@ import type {
   DeletePreview,
   DeletedEntry,
   CrushPreview,
-  CrushCost,
   CorrectionStart,
   CorrectionPlan,
   UnclassifiedRow,
@@ -92,14 +91,14 @@ async function saveRpc(fn: string, args: Record<string, unknown>) {
   return res
 }
 
-/** Crush arguments shared by the save and the preview. Only kg and the cost lines go to the database; it computes every value. */
-function crushArgs(i: { inputBatchCode: string; inputQtyKg: number; outputs: GradeOutput[]; wastageKg: number; costs: CrushCost[] }) {
+/** Crush arguments shared by the save and the preview. Only kg and the rate go to the database; it computes every value. */
+function crushArgs(i: { inputBatchCode: string; inputQtyKg: number; outputs: GradeOutput[]; wastageKg: number; ratePkrPerKg: number }) {
   return {
     p_input_batch_code: i.inputBatchCode,
     p_input_qty_grams: Math.round(i.inputQtyKg * 1000),
     p_outputs: i.outputs.map((o) => ({ product_code: o.product_code, qty_grams: Math.round(o.qty_kg * 1000) })),
     p_wastage_grams: Math.round(i.wastageKg * 1000),
-    p_costs: i.costs,
+    p_rate_paisa_per_kg: Math.round(i.ratePkrPerKg * 100),
   }
 }
 
@@ -367,8 +366,8 @@ export class LedgerEngine {
 
   /**
    * Record a crush run (public.record_crush). The database prices everything, one calculation shared with
-   * crushPreview: cost = rock value used + every crushing-cost line; the good salt carries all of it (loss absorbed),
-   * split by weight. Each cost line: paid now -> cash, the rest -> owed to its named supplier.
+   * crushPreview: cost = rock value used + plant cost (rate x rock kg, credited to 5490); the good salt carries all
+   * of it (loss absorbed), split by weight. No cash moves on a crush.
    */
   async recordCrush(input: {
     /** One key per entry attempt; reused on every retry of that same entry. */
@@ -377,7 +376,7 @@ export class LedgerEngine {
     inputQtyKg: number
     outputs: GradeOutput[]
     wastageKg: number
-    costs: CrushCost[]
+    ratePkrPerKg: number
     occurredOn: string
     note?: string
   }): Promise<ProcessRunResult> {
@@ -395,10 +394,17 @@ export class LedgerEngine {
   }
 
   /** The database's figures for a crush run, without saving anything. */
-  async crushPreview(input: { inputBatchCode: string; inputQtyKg: number; outputs: GradeOutput[]; wastageKg: number; costs: CrushCost[] }): Promise<CrushPreview> {
+  async crushPreview(input: { inputBatchCode: string; inputQtyKg: number; outputs: GradeOutput[]; wastageKg: number; ratePkrPerKg: number }): Promise<CrushPreview> {
     const { data, error } = await supabase.rpc('crush_preview', crushArgs(input))
     if (error) throw rpcError(error)
     return data as CrushPreview
+  }
+
+  /** The crushing rate (Rs per kg of rock) used on the last crush, or null before the first one. */
+  async lastCrushRate(): Promise<number | null> {
+    const { data, error } = await supabase.from('v_last_crush_rate').select('rate_paisa_per_kg').maybeSingle()
+    if (error) throw rpcError(error)
+    return data?.rate_paisa_per_kg != null ? data.rate_paisa_per_kg / 100 : null
   }
 
   /** Every supplier with what we owe them now (public.v_supplier_balances), biggest first. */

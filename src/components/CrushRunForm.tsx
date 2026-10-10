@@ -3,7 +3,7 @@ import { engine } from '../lib/engine'
 import type { BatchRow, CrushPreview, Product } from '../lib/types'
 import { batchNames, leftAndCost, withStockOldestFirst } from '../lib/batches'
 import { bagsLooseGrams, crushWastage } from '../lib/qty'
-import { COST_KINDS, ELECTRICITY_PARTY, costPerKg, newCostDraft, paidNowPaisa, toCosts, type CostDraft } from '../lib/crushCosts'
+import { costPerKg } from '../lib/crushCosts'
 import { SaveControls, useSafeSave } from './SafeSave'
 import {
   Bi,
@@ -67,8 +67,7 @@ export default function CrushRunForm({ onPosted }: { onPosted: () => void }) {
   const [fineLoose, setFineLoose] = useState('')
   const [daanaBags, setDaanaBags] = useState('')
   const [daanaLoose, setDaanaLoose] = useState('')
-  const [costRows, setCostRows] = useState<CostDraft[]>(() => [newCostDraft('labour')])
-  const [suppliers, setSuppliers] = useState<string[]>([])
+  const [rate, setRate] = useState('')
   const [note, setNote] = useState('')
   const safe = useSafeSave()
   const [loadError, setLoadError] = useState<unknown>(null)
@@ -82,7 +81,8 @@ export default function CrushRunForm({ onPosted }: { onPosted: () => void }) {
         setProducts(p)
       })
       .catch(setLoadError)
-    engine.supplierNames().then(setSuppliers).catch(() => setSuppliers([]))
+    // start from the rate used last time (blank before the first crush)
+    engine.lastCrushRate().then((r) => r != null && setRate((cur) => cur || String(r))).catch(() => {})
   }, [])
 
   // only rock salt goes in; Fine and Daana come out
@@ -103,22 +103,23 @@ export default function CrushRunForm({ onPosted }: { onPosted: () => void }) {
     { product_code: FINE, qty_kg: fineG / 1000 },
     { product_code: DAANA, qty_kg: daanaG / 1000 },
   ].filter((o) => o.qty_kg > 0)
-  const { costs, problems: costProblems, alreadyBookedPaisa } = toCosts(costRows)
+  const rateNum = Number(rate)
+  const rateOk = rate.trim() !== '' && Number.isFinite(rateNum) && rateNum >= 0
 
   const qtyWithinStock = !!selectedBatch && inputG <= selectedBatch.onhand_grams
   const massOk = inputG > 0 && outG > 0 && !waste.over
-  const valid = !!inputBatch && outputsKnown && massOk && qtyWithinStock && costProblems.length === 0
+  const valid = !!inputBatch && outputsKnown && massOk && qtyWithinStock && rateOk
 
   // The preview is the database's own calculation (the same function the save uses), asked again 0.4 s after typing stops.
-  const previewKey = JSON.stringify([inputBatch, inputG, fineG, daanaG, costs])
+  const previewKey = JSON.stringify([inputBatch, inputG, fineG, daanaG, rateNum])
   useEffect(() => {
     setPreview(null)
     setPreviewError(null)
-    if (!inputBatch || !outputsKnown || !massOk || !qtyWithinStock || costProblems.length > 0) return
+    if (!inputBatch || !outputsKnown || !massOk || !qtyWithinStock || !rateOk) return
     let alive = true
     const t = setTimeout(() => {
       engine
-        .crushPreview({ inputBatchCode: inputBatch, inputQtyKg: inputG / 1000, outputs, wastageKg: waste.g / 1000, costs })
+        .crushPreview({ inputBatchCode: inputBatch, inputQtyKg: inputG / 1000, outputs, wastageKg: waste.g / 1000, ratePkrPerKg: rateNum })
         .then((p) => alive && setPreview(p))
         .catch((e) => alive && setPreviewError(e))
     }, 400)
@@ -130,23 +131,20 @@ export default function CrushRunForm({ onPosted }: { onPosted: () => void }) {
 
   function clear() {
     for (const set of [setRockBags, setRockLoose, setFineBags, setFineLoose, setDaanaBags, setDaanaLoose, setNote]) set('')
-    setCostRows([newCostDraft('labour')])
   }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     if (!valid) return
-    // costs already in Money Out are only noted on the entry (not paid again, not in this salt's cost)
-    const booked = alreadyBookedPaisa > 0 ? `Rs ${(alreadyBookedPaisa / 100).toLocaleString()} crushing cost already in Money Out, not in this cost per kg` : ''
     const res = await safe.save((key) =>
       engine.recordCrush({
         inputBatchCode: inputBatch,
         inputQtyKg: inputG / 1000,
         outputs,
         wastageKg: waste.g / 1000,
-        costs,
+        ratePkrPerKg: rateNum,
         occurredOn: date,
-        note: [note.trim(), booked].filter(Boolean).join('; ') || undefined,
+        note: note.trim() || undefined,
         idempotencyKey: key,
       }),
     )
@@ -216,7 +214,12 @@ export default function CrushRunForm({ onPosted }: { onPosted: () => void }) {
           )
         )}
 
-        <CostTable rows={costRows} setRows={setCostRows} suppliers={suppliers} problems={costProblems} />
+        <Field label="Crushing rate / پسائی ریٹ (Rs per kg of rock)">
+          <input type="number" min="0" step="0.01" inputMode="decimal" value={rate} onChange={(e) => setRate(e.target.value)} placeholder="e.g. 2" className={inputCls} required />
+        </Field>
+        <p className="-mt-3 text-sm text-slate-600">
+          Our own plant: no cash moves here. The real plant bills (electricity, workers, diesel) go in Money Out as usual.
+        </p>
 
         <Field label="Note (optional)">
           <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. day shift" className={inputCls} />
@@ -225,7 +228,7 @@ export default function CrushRunForm({ onPosted }: { onPosted: () => void }) {
         {previewError != null && <ErrorBanner error={previewError} />}
         {preview && (
           <>
-            <Answer preview={preview} inputG={inputG} fineG={fineG} daanaG={daanaG} lossG={waste.g} lossPct={pct} alreadyBookedPaisa={alreadyBookedPaisa} />
+            <Answer preview={preview} inputG={inputG} fineG={fineG} daanaG={daanaG} lossG={waste.g} lossPct={pct} />
             <JournalPreview
               lines={preview.lines.map((l) => ({
                 account: l.account,
@@ -248,147 +251,17 @@ export default function CrushRunForm({ onPosted }: { onPosted: () => void }) {
 
 const rs = (paisa: number) => `Rs ${(paisa / 100).toLocaleString('en-PK', { maximumFractionDigits: 2 })}`
 
-/** Crushing cost, one line per cost; each line says how much is paid now and who is owed the rest. */
-function CostTable({ rows, setRows, suppliers, problems }: {
-  rows: CostDraft[]
-  setRows: React.Dispatch<React.SetStateAction<CostDraft[]>>
-  suppliers: string[]
-  problems: string[]
-}) {
-  const set = (key: number, patch: Partial<CostDraft>) => setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)))
-  return (
-    <section className="space-y-3">
-      <h3 className="text-base font-semibold text-slate-700">
-        <Bi en="Crushing cost" ur="پسائی کا خرچ" />
-      </h3>
-      {rows.map((d) => {
-        const amount = Number(d.amount) > 0 ? Math.round(Number(d.amount) * 100) : 0
-        const paid = paidNowPaisa(d)
-        const later = amount > 0 && paid >= 0 && paid <= amount ? amount - paid : 0
-        return (
-          <div key={d.key} className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Field label="What / کس چیز کا">
-                <select
-                  value={d.kind}
-                  onChange={(e) => {
-                    const kind = e.target.value as CostDraft['kind']
-                    // a new kind starts with its own default paid-now; electricity is owed to the bill by default
-                    set(d.key, { kind, paidNow: '', paidEdited: false, owedTo: kind === 'electricity' && !d.owedTo ? ELECTRICITY_PARTY : d.owedTo })
-                  }}
-                  className={inputCls}
-                >
-                  {COST_KINDS.map((k) => (
-                    <option key={k.kind} value={k.kind}>{k.en} / {k.ur}</option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Amount / رقم (Rs)">
-                <input type="number" min="0" step="0.01" inputMode="decimal" value={d.amount} onChange={(e) => set(d.key, { amount: e.target.value })} className={inputCls} />
-              </Field>
-            </div>
-
-            <label className="flex min-h-11 items-center gap-3 text-base text-slate-700">
-              <input type="checkbox" checked={d.alreadyBooked} onChange={(e) => set(d.key, { alreadyBooked: e.target.checked })} className="h-5 w-5" />
-              <span><Bi en="Already entered in Money Out" ur="پہلے ہی خرچ میں درج ہے" /></span>
-            </label>
-
-            {d.alreadyBooked ? (
-              <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                Nothing is paid again and the cost per kg will not include this — next time enter it here instead.
-              </p>
-            ) : (
-              <>
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="Paid now / ابھی دیا (Rs)">
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      inputMode="decimal"
-                      value={d.paidEdited ? d.paidNow : amount > 0 ? String(paid / 100) : ''}
-                      onChange={(e) => set(d.key, { paidNow: e.target.value, paidEdited: true })}
-                      className={inputCls}
-                    />
-                  </Field>
-                  <div>
-                    <span className="mb-1.5 block text-base font-semibold text-slate-700">Rest later / باقی بعد میں</span>
-                    <div className="flex min-h-11 items-center rounded-xl bg-white px-3 text-lg font-bold text-slate-900">{rs(later)}</div>
-                  </div>
-                </div>
-                {later > 0 && (
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <Field label="Owed to / کس کو دینا ہے">
-                      <input
-                        type="text"
-                        list="crush-suppliers"
-                        value={d.owedTo}
-                        onChange={(e) => set(d.key, { owedTo: e.target.value })}
-                        placeholder="worker name, diesel pump…"
-                        className={inputCls}
-                      />
-                    </Field>
-                    <Field label="Expected date / کب دینا ہے (optional)">
-                      <input type="date" value={d.expectedOn} onChange={(e) => set(d.key, { expectedOn: e.target.value })} className={inputCls} />
-                    </Field>
-                  </div>
-                )}
-              </>
-            )}
-            {d.kind === 'electricity' && (
-              <p className="text-sm text-slate-600">
-                Electricity: enter an estimate as “rest later” to {ELECTRICITY_PARTY}; when the real bill comes, pay it in full from
-                Pay supplier — any extra goes to Utilities.
-              </p>
-            )}
-            {rows.length > 1 && (
-              <button
-                type="button"
-                onClick={() => setRows((rs) => rs.filter((r) => r.key !== d.key))}
-                className="min-h-11 rounded-lg border border-slate-300 px-3 text-base font-semibold text-slate-700 hover:bg-white"
-              >
-                Remove this line / ہٹائیں
-              </button>
-            )}
-          </div>
-        )
-      })}
-      <datalist id="crush-suppliers">
-        {suppliers.map((s) => <option key={s} value={s} />)}
-      </datalist>
-      <div className="flex flex-wrap gap-2">
-        {COST_KINDS.map((k) => (
-          <button
-            key={k.kind}
-            type="button"
-            onClick={() => setRows((rs) => [...rs, newCostDraft(k.kind)])}
-            className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            + {k.en} / <span lang="ur" dir="rtl">{k.ur}</span>
-          </button>
-        ))}
-      </div>
-      {problems.map((p) => (
-        <p key={p} role="alert" className="text-base font-semibold text-rose-700">{p}</p>
-      ))}
-    </section>
-  )
-}
-
 /** The answer before Save: what the salt cost, per kg and per 50 kg bag (the database's own figures). */
-function Answer({ preview, inputG, fineG, daanaG, lossG, lossPct, alreadyBookedPaisa }: {
+function Answer({ preview, inputG, fineG, daanaG, lossG, lossPct }: {
   preview: CrushPreview
   inputG: number
   fineG: number
   daanaG: number
   lossG: number
   lossPct: string
-  alreadyBookedPaisa: number
 }) {
   const perKg = costPerKg(preview.pool_paisa, preview.output_grams)
   const rockPerKg = costPerKg(preview.input_value_paisa, inputG)
-  const k = preview.costs
-  const owedTo = k.owed.map((o) => `${o.name} ${rs(o.amount_paisa)}`).join(', ')
   const r2 = (n: number) => n.toLocaleString('en-PK', { maximumFractionDigits: 2 })
   return (
     <section className="space-y-2 rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 text-base text-slate-800">
@@ -396,10 +269,7 @@ function Answer({ preview, inputG, fineG, daanaG, lossG, lossPct, alreadyBookedP
         Rock used: <strong>{kgText(inputG)} kg × Rs {r2(rockPerKg)}/kg = {rs(preview.input_value_paisa)}</strong>
       </div>
       <div>
-        Crushing cost: <strong>{rs(k.total_paisa)}</strong>
-        <span className="block text-sm text-slate-600">
-          paid now {rs(k.paid_now_paisa)} · pay later {rs(k.later_paisa)}{owedTo ? ` to ${owedTo}` : ''}
-        </span>
+        Plant cost: <strong>{kgText(inputG)} kg × Rs {r2(preview.rate_paisa_per_kg / 100)}/kg = {rs(preview.plant_cost_paisa)}</strong>
       </div>
       <div>
         Good salt out: Fine {kgText(fineG)} kg + Daana {kgText(daanaG)} kg = <strong>{kgText(preview.output_grams)} kg</strong>
@@ -412,14 +282,9 @@ function Answer({ preview, inputG, fineG, daanaG, lossG, lossPct, alreadyBookedP
         <div className="text-3xl font-bold text-amber-800">Rs {r2(perKg)}</div>
         <div className="text-base text-slate-700">Rs {r2(perKg * 50)} per 50 kg bag</div>
         <div className="mt-1 text-xs text-slate-500">
-          ({rs(preview.input_value_paisa)} + {rs(k.total_paisa)}) ÷ {kgText(preview.output_grams)} kg
+          ({rs(preview.input_value_paisa)} + {rs(preview.plant_cost_paisa)}) ÷ {kgText(preview.output_grams)} kg
         </div>
       </div>
-      {alreadyBookedPaisa > 0 && (
-        <p className="text-sm text-amber-900">
-          {rs(alreadyBookedPaisa)} already in Money Out is not in this cost per kg.
-        </p>
-      )}
     </section>
   )
 }
