@@ -31,6 +31,7 @@ import type {
   CorrectionStart,
   CorrectionPlan,
   UnclassifiedRow,
+  PlantRateRow,
   SupplierBalance,
   PaySupplierResult,
 } from './types'
@@ -115,6 +116,7 @@ const OFFLINE_READS = [
   'listEvents', 'accountBalances', 'stockOnHand', 'batches', 'products', 'locations', 'openReviewItems',
   'eventLines', 'accountLines', 'accountTotals', 'customers', 'customerAdvanceBalance', 'sales', 'salesTotals',
   'dispatchAllocations', 'debtors', 'ledgerHealth', 'cashDay', 'deletedEntries', 'supplierNames', 'supplierBalances', 'unclassified',
+  'plantRateCheck',
 ] as const
 
 export class LedgerEngine {
@@ -405,6 +407,13 @@ export class LedgerEngine {
     const { data, error } = await supabase.from('v_last_crush_rate').select('rate_paisa_per_kg').maybeSingle()
     if (error) throw rpcError(error)
     return data?.rate_paisa_per_kg != null ? data.rate_paisa_per_kg / 100 : null
+  }
+
+  /** Plant rate check per month, newest first (public.v_plant_rate_check). */
+  async plantRateCheck(): Promise<PlantRateRow[]> {
+    const { data, error } = await supabase.from('v_plant_rate_check').select('*').order('month', { ascending: false })
+    if (error) throw rpcError(error)
+    return data as PlantRateRow[]
   }
 
   /** Every supplier with what we owe them now (public.v_supplier_balances), biggest first. */

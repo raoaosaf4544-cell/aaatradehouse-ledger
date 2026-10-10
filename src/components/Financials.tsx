@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { engine } from '../lib/engine'
 import type { AccountBalance, AccountTotals } from '../lib/types'
+import PlantRateCheck from './PlantRateCheck'
 import { Card, ErrorBanner, Money, SectionTitle, ShowMore, Spinner, StatCard, usePaged } from './ui'
 
 const GROUP_ORDER: Array<AccountBalance['type']> = ['asset', 'liability', 'equity', 'income', 'expense']
@@ -80,6 +81,8 @@ export default function Financials() {
           <Money paisa={suspense?.balance_paisa ?? 0} />
         </StatCard>
       </div>
+
+      <PlantRateCheck />
 
       <Card>
         <SectionTitle>Trial balance — click any account to see its exact ledger lines</SectionTitle>

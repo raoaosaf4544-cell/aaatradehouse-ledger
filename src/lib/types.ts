@@ -8,6 +8,8 @@ export type LedgerLine = {
   account: string
   debit?: number
   credit?: number
+  /** a Suppliers (2000) line: who it is owed to (a new name becomes a supplier) */
+  party?: string
 }
 
 export type PostEventInput = {
@@ -421,4 +423,16 @@ export function paisaToPkr(paisa: number): string {
 
 export function gramsToKg(grams: number): string {
   return (grams / 1000).toLocaleString('en-PK', { maximumFractionDigits: 1 })
+}
+
+/** One month of public.v_plant_rate_check: real plant bills (5410-5440) vs plant cost charged to salt (5490). */
+export type PlantRateRow = {
+  month: string
+  actual_bills_paisa: number
+  charged_paisa: number
+  /** more than 0 = under-charged, less than 0 = over-charged */
+  under_charged_paisa: number
+  rock_crushed_grams: number
+  /** actual bills / kg crushed; null when no rock was crushed that month */
+  suggested_rate_paisa_per_kg: number | null
 }
