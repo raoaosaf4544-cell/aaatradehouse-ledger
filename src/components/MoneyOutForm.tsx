@@ -3,16 +3,20 @@ import { engine } from '../lib/engine'
 import { Bi, Card, DateField, Field, inputCls, JournalPreview, SectionTitle, accountName, todayPK } from './ui'
 import { SaveControls, useSafeSave } from './SafeSave'
 
-type Group = 'plant' | 'spend' | 'asset'
+type Group = 'home' | 'plant' | 'spend' | 'asset'
 type Category = { id: string; label: string; account: string; eventType: string; group: Group }
 
 const GROUPS: { group: Group; label: string }[] = [
+  { group: 'home', label: 'Ghar / گھر — not business' },
   { group: 'plant', label: 'Plant / پلانٹ — crushing plant bills' },
   { group: 'spend', label: 'Spending' },
   { group: 'asset', label: 'Something bought that keeps its value (asset)' },
 ]
 
 const CATEGORIES: Category[] = [
+  // household spending is the owner taking money out, not a business cost
+  { id: 'ghar', label: 'Ghar kharch / گھر کا خرچ (milk, sabzi, meat…)', account: '3100', eventType: 'owner_drawing', group: 'home' },
+  { id: 'drawings', label: 'Owner Drawings (personal take-out)', account: '3100', eventType: 'owner_drawing', group: 'home' },
   { id: 'plant_electricity', label: 'Plant electricity / پلانٹ بجلی', account: '5410', eventType: 'expense', group: 'plant' },
   { id: 'plant_labour', label: 'Plant labour / پلانٹ مزدوری', account: '5420', eventType: 'expense', group: 'plant' },
   { id: 'plant_diesel', label: 'Plant diesel & repairs / ڈیزل و مرمت', account: '5430', eventType: 'expense', group: 'plant' },
@@ -28,7 +32,6 @@ const CATEGORIES: Category[] = [
   { id: 'bike', label: 'Vehicle (1400)', account: '1400', eventType: 'asset_purchase', group: 'asset' },
   { id: 'goats', label: 'Livestock (1450)', account: '1450', eventType: 'asset_purchase', group: 'asset' },
   { id: 'equipment', label: 'Equipment / other assets (1500)', account: '1500', eventType: 'asset_purchase', group: 'asset' },
-  { id: 'drawings', label: 'Owner Drawings (personal take-out)', account: '3100', eventType: 'drawings', group: 'spend' },
   { id: 'personal', label: 'Personal / Unclear — Suspense for review', account: '1900', eventType: 'expense', group: 'spend' },
 ]
 

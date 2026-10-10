@@ -363,7 +363,7 @@ function TypeBadge({ type }: { type: string }) {
     capital_injection: 'bg-emerald-100 text-emerald-700',
     expense: 'bg-slate-100 text-slate-600',
     asset_purchase: 'bg-blue-100 text-blue-700',
-    drawings: 'bg-rose-100 text-rose-700',
+    owner_drawing: 'bg-rose-100 text-rose-700',
     purchase: 'bg-indigo-100 text-indigo-700',
     process_run: 'bg-amber-100 text-amber-700',
     other: 'bg-amber-100 text-amber-700',
