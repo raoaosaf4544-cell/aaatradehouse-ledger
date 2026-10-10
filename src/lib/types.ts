@@ -436,3 +436,44 @@ export type PlantRateRow = {
   /** actual bills / kg crushed; null when no rock was crushed that month */
   suggested_rate_paisa_per_kg: number | null
 }
+
+/** A worker with what we owe him and his advance (public.v_workers). */
+export type WorkerRow = {
+  party_id: number
+  party_ref: string
+  name: string
+  phone: string | null
+  is_active: boolean
+  pay_type: 'day' | 'bag' | 'ton' | 'fixed'
+  rate_paisa: number
+  area: 'plant' | 'other'
+  owed_paisa: number
+  advance_paisa: number
+  last_work_on: string | null
+  last_paid_on: string | null
+}
+
+/** One entry of a worker's history (public.v_worker_history). */
+export type WorkerHistoryRow = {
+  party_id: number
+  event_id: number
+  event_ref: string
+  occurred_on: string
+  event_type: 'work_done' | 'worker_payment' | string
+  description: string
+  owed_change_paisa: number
+  advance_change_paisa: number
+}
+
+/** What record_work / pay_worker answer. */
+export type WorkerResult = {
+  event_ref: string
+  worker: string
+  duplicate?: boolean
+  wage_paisa?: number
+  advance_used_paisa?: number
+  paid_paisa?: number
+  advance_paisa?: number
+  owed_after_paisa: number
+  advance_after_paisa: number
+}

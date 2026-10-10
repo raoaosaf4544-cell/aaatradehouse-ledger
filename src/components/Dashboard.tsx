@@ -14,6 +14,10 @@ type Snapshot = {
   unclassifiedPaisa: number
   /** 2000 Suppliers, as what we owe (credit side positive) */
   weOwePaisa: number
+  /** 2100 Wages owed (credit side positive) */
+  wagesOwedPaisa: number
+  /** 1320 Worker advances (peshgi) */
+  advancesPaisa: number
   debtors: DebtorRow[]
   inventoryTotalPaisa: number
   stock: StockOnHand[]
@@ -49,7 +53,9 @@ export default function Dashboard({ go }: { go?: (tab: string) => void }) {
       const unclassifiedPaisa = (find('1900')?.balance_paisa ?? 0) + (find('5950')?.balance_paisa ?? 0)
       // balances are debit minus credit; what we owe suppliers is on the credit side
       const weOwePaisa = -(find('2000')?.balance_paisa ?? 0)
-      setSnap({ cash: find('1000'), vehicle: find('1400'), unclassifiedPaisa, weOwePaisa, inventoryTotalPaisa, stock, debtors, health })
+      const wagesOwedPaisa = -(find('2100')?.balance_paisa ?? 0)
+      const advancesPaisa = find('1320')?.balance_paisa ?? 0
+      setSnap({ cash: find('1000'), vehicle: find('1400'), unclassifiedPaisa, weOwePaisa, wagesOwedPaisa, advancesPaisa, inventoryTotalPaisa, stock, debtors, health })
     } catch (e) {
       setError(e)
     } finally {
@@ -164,11 +170,19 @@ export default function Dashboard({ go }: { go?: (tab: string) => void }) {
         </StatCard>
         <StatCard
           label="We owe / ہم نے دینا ہے"
-          sub="Workers, diesel, bills — tap to see who and pay →"
-          tone={snap.weOwePaisa > 0 ? 'amber' : 'slate'}
-          onClick={go && (() => go('record-paysupplier'))}
+          sub={`Suppliers Rs ${(snap.weOwePaisa / 100).toLocaleString()} + wages Rs ${(snap.wagesOwedPaisa / 100).toLocaleString()} — tap to pay →`}
+          tone={snap.weOwePaisa + snap.wagesOwedPaisa > 0 ? 'amber' : 'slate'}
+          onClick={go && (() => go(snap.wagesOwedPaisa > 0 && snap.weOwePaisa <= 0 ? 'workers' : 'record-paysupplier'))}
         >
-          <Money paisa={snap.weOwePaisa} />
+          <Money paisa={snap.weOwePaisa + snap.wagesOwedPaisa} />
+        </StatCard>
+        <StatCard
+          label="Advances given / پیشگی"
+          sub="Paid to workers ahead of their work — tap to see who →"
+          tone={snap.advancesPaisa > 0 ? 'blue' : 'slate'}
+          onClick={go && (() => go('workers'))}
+        >
+          <Money paisa={snap.advancesPaisa} />
         </StatCard>
       </div>
 

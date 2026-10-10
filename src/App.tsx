@@ -23,6 +23,7 @@ import SellSaltForm from './components/SellSaltForm'
 import Debtors from './components/Debtors'
 import Unclassified from './components/Unclassified'
 import PaySupplier from './components/PaySupplier'
+import Workers from './components/Workers'
 
 type AppUser = { id: string; name: string; role: string }
 
@@ -93,7 +94,7 @@ function App() {
 }
 
 const TABS = new Set([
-  'dashboard', 'cashbook', 'cash', 'salt', 'financials', 'review', 'debtors', 'deleted', 'record', 'unclassified',
+  'dashboard', 'cashbook', 'cash', 'salt', 'financials', 'review', 'debtors', 'deleted', 'record', 'unclassified', 'workers',
   'record-capital', 'record-purchase', 'record-crush', 'record-moneyout', 'record-sale', 'record-paysupplier',
 ])
 const tabFromHash = () => {
@@ -215,6 +216,7 @@ function Ledger({ userName, canRecord }: { userName: string; canRecord: boolean 
           {activeTab === 'deleted' && <DeletedEntries />}
           {activeTab === 'unclassified' && <Unclassified key={dataVersion} canRecord={canRecord} />}
           {activeTab === 'debtors' && <Debtors onPosted={onPosted} />}
+          {activeTab === 'workers' && <Workers key={dataVersion} onPosted={onPosted} canRecord={canRecord} />}
           {activeTab === 'record' && <Record go={go} />}
           {activeTab.startsWith('record-') && (
             // entry forms: a comfortable form width on big screens, full width on phones

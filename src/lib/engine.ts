@@ -32,6 +32,9 @@ import type {
   CorrectionPlan,
   UnclassifiedRow,
   PlantRateRow,
+  WorkerRow,
+  WorkerHistoryRow,
+  WorkerResult,
   SupplierBalance,
   PaySupplierResult,
 } from './types'
@@ -116,7 +119,7 @@ const OFFLINE_READS = [
   'listEvents', 'accountBalances', 'stockOnHand', 'batches', 'products', 'locations', 'openReviewItems',
   'eventLines', 'accountLines', 'accountTotals', 'customers', 'customerAdvanceBalance', 'sales', 'salesTotals',
   'dispatchAllocations', 'debtors', 'ledgerHealth', 'cashDay', 'deletedEntries', 'supplierNames', 'supplierBalances', 'unclassified',
-  'plantRateCheck',
+  'plantRateCheck', 'workers', 'workerHistory',
 ] as const
 
 export class LedgerEngine {
@@ -414,6 +417,53 @@ export class LedgerEngine {
     const { data, error } = await supabase.from('v_plant_rate_check').select('*').order('month', { ascending: false })
     if (error) throw rpcError(error)
     return data as PlantRateRow[]
+  }
+
+  /** Every worker with what we owe him and his advance (public.v_workers), active first, by name. */
+  async workers(): Promise<WorkerRow[]> {
+    const { data, error } = await supabase.from('v_workers').select('*').order('is_active', { ascending: false }).order('name')
+    if (error) throw rpcError(error)
+    return data as WorkerRow[]
+  }
+
+  /** One worker's entries, newest first (public.v_worker_history). */
+  async workerHistory(partyId: number): Promise<WorkerHistoryRow[]> {
+    const { data, error } = await supabase.from('v_worker_history').select('*').eq('party_id', partyId)
+      .order('occurred_on', { ascending: false }).order('event_id', { ascending: false }).limit(50)
+    if (error) throw rpcError(error)
+    return data as WorkerHistoryRow[]
+  }
+
+  /** Add a worker (partyId null) or change one (public.save_worker). Not a money entry. */
+  async saveWorker(w: { partyId: number | null; name: string; phone: string; payType: WorkerRow['pay_type']; ratePkr: number; area: WorkerRow['area']; active: boolean }): Promise<number> {
+    const { data, error } = await supabase.rpc('save_worker', {
+      p_party_id: w.partyId, p_name: w.name.trim(), p_phone: w.phone.trim(), p_pay_type: w.payType,
+      p_rate_paisa: Math.round(w.ratePkr * 100), p_area: w.area, p_active: w.active,
+    })
+    if (error) throw rpcError(error)
+    return data as number
+  }
+
+  /** Work done (public.record_work): Dr 5420 / 5000, his advance used first, the rest owed to him (2100). */
+  async recordWork(input: { idempotencyKey: string; partyId: number; qty: number; wagePkr: number; occurredOn: string; note?: string }): Promise<WorkerResult> {
+    if (!(input.wagePkr > 0)) throw new InvariantError('The wage must be more than 0.')
+    const { data, error } = await saveRpc('record_work', {
+      p_party_id: input.partyId, p_qty: input.qty, p_wage_paisa: Math.round(input.wagePkr * 100),
+      p_occurred_on: input.occurredOn, p_note: input.note?.trim() || null, p_idempotency_key: input.idempotencyKey,
+    })
+    if (error) throw rpcError(error)
+    return data as WorkerResult
+  }
+
+  /** Pay a worker (public.pay_worker): clears what he is owed; anything more is an advance (peshgi). */
+  async payWorker(input: { idempotencyKey: string; partyId: number; amountPkr: number; from: 'cash' | 'bank'; occurredOn: string; note?: string }): Promise<WorkerResult> {
+    if (!(input.amountPkr > 0)) throw new InvariantError('Payment amount must be positive.')
+    const { data, error } = await saveRpc('pay_worker', {
+      p_party_id: input.partyId, p_amount_paisa: Math.round(input.amountPkr * 100), p_from: input.from,
+      p_occurred_on: input.occurredOn, p_note: input.note?.trim() || null, p_idempotency_key: input.idempotencyKey,
+    })
+    if (error) throw rpcError(error)
+    return data as WorkerResult
   }
 
   /** Every supplier with what we owe them now (public.v_supplier_balances), biggest first. */
