@@ -479,3 +479,40 @@ export type WorkerResult = {
   owed_after_paisa: number
   advance_after_paisa: number
 }
+
+/** public.business_health(p_from, p_to): every figure of the Business health page, from the books. */
+export type BusinessHealth = {
+  from: string
+  to: string
+  days: number
+  sales: {
+    total_paisa: number; grams: number; bags: number; cash_paisa: number; udhaar_paisa: number; advance_paisa: number
+    /** in the ledger but not on any sale line (corrections) */
+    adjustments_paisa: number
+    by_product: { code: string; name: string; grams: number; revenue_paisa: number; cogs_paisa: number; profit_paisa: number }[]
+  }
+  gross: {
+    profit_paisa: number; cogs_paisa: number; cogs_adjustments_paisa: number
+    margin_pct: number | null; per_kg_paisa: number | null; per_bag_paisa: number | null
+    customers: { name: string; revenue_paisa: number; profit_paisa: number; grams: number }[]
+    below_cost: { sale_ref: string; date: string; customer: string; product: string; grams: number; revenue_paisa: number; cogs_paisa: number }[]
+  }
+  costs: {
+    plant_paisa: number; plant_bills_paisa: number; plant_charged_paisa: number; labour_paisa: number; transport_paisa: number
+    packing_paisa: number; shop_admin_paisa: number; other_paisa: number; running_paisa: number; one_time_paisa: number
+  }
+  other_income_paisa: number
+  net_profit_paisa: number
+  break_even: { bags_needed: number | null; bags_sold: number; why_not: string | null }
+  cash: {
+    cash_paisa: number; bank_paisa: number; udhaar_paisa: number; suppliers_paisa: number; wages_paisa: number; advances_paisa: number
+    after_all_paisa: number
+    debtors: { name: string; owed_paisa: number; unpaid_since: string | null; days: number | null }[]
+  }
+  ghar: { drawings_paisa: number; more_than_profit: boolean }
+  return: { capital_paisa: number; pct: number | null }
+  stock: { rock_grams: number; rock_paisa: number; crushed_grams: number; crushed_paisa: number; kg_sold_per_day: number | null; days_left: number | null }
+  other_activities: { goats_paisa: number }
+}
+
+export type BusinessTrendRow = { month: string; sales_paisa: number; gross_profit_paisa: number; net_profit_paisa: number }

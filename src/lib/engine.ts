@@ -35,6 +35,8 @@ import type {
   WorkerRow,
   WorkerHistoryRow,
   WorkerResult,
+  BusinessHealth,
+  BusinessTrendRow,
   SupplierBalance,
   PaySupplierResult,
 } from './types'
@@ -119,7 +121,7 @@ const OFFLINE_READS = [
   'listEvents', 'accountBalances', 'stockOnHand', 'batches', 'products', 'locations', 'openReviewItems',
   'eventLines', 'accountLines', 'accountTotals', 'customers', 'customerAdvanceBalance', 'sales', 'salesTotals',
   'dispatchAllocations', 'debtors', 'ledgerHealth', 'cashDay', 'deletedEntries', 'supplierNames', 'supplierBalances', 'unclassified',
-  'plantRateCheck', 'workers', 'workerHistory',
+  'plantRateCheck', 'workers', 'workerHistory', 'businessHealth', 'businessTrend',
 ] as const
 
 export class LedgerEngine {
@@ -418,6 +420,20 @@ export class LedgerEngine {
     const { data, error } = await supabase.from('v_plant_rate_check').select('*').order('month', { ascending: false })
     if (error) throw rpcError(error)
     return data as PlantRateRow[]
+  }
+
+  /** Business health for a period (null from = since the books started), all from public.business_health. */
+  async businessHealth(from: string | null, to: string | null): Promise<BusinessHealth> {
+    const { data, error } = await supabase.rpc('business_health', { p_from: from, p_to: to })
+    if (error) throw rpcError(error)
+    return data as BusinessHealth
+  }
+
+  /** The last 6 months that have sales: sales, gross and net profit (public.business_trend). */
+  async businessTrend(): Promise<BusinessTrendRow[]> {
+    const { data, error } = await supabase.rpc('business_trend')
+    if (error) throw rpcError(error)
+    return data as BusinessTrendRow[]
   }
 
   /** Every worker with what we owe him and his advance (public.v_workers), active first, by name. */

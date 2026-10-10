@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState } from 'react'
-import { BookUser, HandCoins, PackageOpen, PlusCircle, RefreshCw, ShieldAlert, ShieldCheck } from 'lucide-react'
+import { Activity, BookUser, HandCoins, PackageOpen, PlusCircle, RefreshCw, ShieldAlert, ShieldCheck } from 'lucide-react'
 import { engine } from '../lib/engine'
 import type { AccountBalance, DebtorRow, LedgerEntryRow, LedgerHealth, StockOnHand } from '../lib/types'
 import { Card, ErrorBanner, Kg, Money, SectionTitle, ShowMore, Spinner, StatCard, usePaged } from './ui'
@@ -132,6 +132,13 @@ export default function Dashboard({ go }: { go?: (tab: string) => void }) {
           >
             <PlusCircle className="h-5 w-5 shrink-0" />
             Other entries — investment, buy salt, crush salt
+          </button>
+          <button
+            onClick={() => go('business')}
+            className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border-2 border-emerald-300 bg-emerald-50 px-4 py-2.5 text-base font-semibold text-emerald-800 hover:bg-emerald-100"
+          >
+            <Activity className="h-5 w-5 shrink-0" />
+            Business health / <span lang="ur" dir="rtl">کاروبار کا حال</span>
           </button>
         </div>
       )}

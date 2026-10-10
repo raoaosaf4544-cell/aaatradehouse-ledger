@@ -24,6 +24,7 @@ import Debtors from './components/Debtors'
 import Unclassified from './components/Unclassified'
 import PaySupplier from './components/PaySupplier'
 import Workers from './components/Workers'
+import BusinessHealth from './components/BusinessHealth'
 
 type AppUser = { id: string; name: string; role: string }
 
@@ -94,7 +95,7 @@ function App() {
 }
 
 const TABS = new Set([
-  'dashboard', 'cashbook', 'cash', 'salt', 'financials', 'review', 'debtors', 'deleted', 'record', 'unclassified', 'workers',
+  'dashboard', 'cashbook', 'cash', 'salt', 'financials', 'review', 'debtors', 'deleted', 'record', 'unclassified', 'workers', 'business',
   'record-capital', 'record-purchase', 'record-crush', 'record-moneyout', 'record-sale', 'record-paysupplier',
 ])
 const tabFromHash = () => {
@@ -216,6 +217,7 @@ function Ledger({ userName, canRecord }: { userName: string; canRecord: boolean 
           {activeTab === 'deleted' && <DeletedEntries />}
           {activeTab === 'unclassified' && <Unclassified key={dataVersion} canRecord={canRecord} />}
           {activeTab === 'debtors' && <Debtors onPosted={onPosted} />}
+          {activeTab === 'business' && <BusinessHealth key={dataVersion} />}
           {activeTab === 'workers' && <Workers key={dataVersion} onPosted={onPosted} canRecord={canRecord} />}
           {activeTab === 'record' && <Record go={go} />}
           {activeTab.startsWith('record-') && (
