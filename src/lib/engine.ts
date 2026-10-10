@@ -329,6 +329,7 @@ export class LedgerEngine {
       p_party_name: input.partyName ?? null,
       p_created_by: this.createdBy(),
       p_idempotency_key: input.idempotencyKey,
+      p_one_time: input.oneTime ?? false,
     })
     if (error) throw rpcError(error)
     return data as string

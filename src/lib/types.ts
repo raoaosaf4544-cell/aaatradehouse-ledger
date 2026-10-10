@@ -21,6 +21,8 @@ export type PostEventInput = {
   partyName?: string
   /** One key per entry attempt; reused on every retry of that same entry. */
   idempotencyKey: string
+  /** Money Out: a one-time setup cost (kept apart from running costs on the business page) */
+  oneTime?: boolean
 }
 
 export type EventRow = {

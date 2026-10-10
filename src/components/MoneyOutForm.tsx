@@ -41,6 +41,7 @@ export default function MoneyOutForm({ onPosted }: { onPosted: () => void }) {
   const [amount, setAmount] = useState('')
   const [description, setDescription] = useState('')
   const [onCredit, setOnCredit] = useState(false)
+  const [oneTime, setOneTime] = useState(false)
   const [supplier, setSupplier] = useState('')
   const [suppliers, setSuppliers] = useState<string[]>([])
   const safe = useSafeSave()
@@ -73,6 +74,7 @@ export default function MoneyOutForm({ onPosted }: { onPosted: () => void }) {
     setAmount('')
     setDescription('')
     setOnCredit(false)
+    setOneTime(false)
     setSupplier('')
   }
 
@@ -87,6 +89,7 @@ export default function MoneyOutForm({ onPosted }: { onPosted: () => void }) {
         lines,
         partyType: 'other',
         idempotencyKey: key,
+        oneTime: category.eventType === 'expense' && oneTime,
       }),
     )
     if (ref === null) return
@@ -160,6 +163,16 @@ export default function MoneyOutForm({ onPosted }: { onPosted: () => void }) {
               </Field>
             )}
           </fieldset>
+        )}
+
+        {category?.eventType === 'expense' && (
+          <label className="flex min-h-11 items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-base text-slate-700">
+            <input type="checkbox" checked={oneTime} onChange={(e) => setOneTime(e.target.checked)} className="mt-0.5 h-5 w-5 shrink-0" />
+            <span>
+              <Bi en="One-time setup cost" ur="ایک بار کا خرچ" />
+              <span className="block text-sm text-slate-500">e.g. a new machine part, the first signboard. Kept apart from running costs. Optional.</span>
+            </span>
+          </label>
         )}
 
         {looksLikePlant && (
